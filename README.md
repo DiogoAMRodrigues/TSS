@@ -11,17 +11,17 @@ A DLT-based Trading and Settlement System built on Hyperledger Besu with IBFT 2.
 ## Project Structure
 ```
 TSS/
-├── contracts/          # Solidity smart contracts
-│   ├── interfaces/     # Contract interfaces
-│   ├── identity/       # Identity & Whitelisting
-│   ├── tokens/         # ERC-20, ERC-1155, Cash Token
-│   ├── trading/        # Order Book & Matching
-│   ├── settlement/     # DvP Settlement
-│   └── registry/       # Asset Registry
+├── contracts/
+│   ├── interfaces/     # IAccessControl, ITokenTransfer, IDvPTrigger, IMatchingEngine, IRegistry
+│   ├── identity/       # Identity.sol - KYC & role-based access control
+│   ├── tokens/         # SecuritiesToken.sol, CashToken.sol
+│   ├── trading/        # OrderBook.sol - IMatchingEngine implementation
+│   ├── settlement/     # Settlement.sol - atomic DvP
+│   └── registry/       # Registry.sol - asset directory
 ├── networkFiles/       # Generated validator keys and genesis (gitignored)
 ├── node1-4/            # Validator node data (keys gitignored)
-├── scripts/            # Deployment scripts
-├── test/               # Hardhat tests
+├── scripts/            # deploy.js
+├── test/               # Hardhat unit tests
 └── docs/               # Architecture documentation
 ```
 
@@ -44,6 +44,21 @@ curl -X POST --data "{\"jsonrpc\":\"2.0\",\"method\":\"ibft_getValidatorsByBlock
 ```
 Should return all 4 validator addresses.
 
+## Smart Contracts
+
+### Architecture
+The system uses a generic plugin architecture where any matching mechanism can plug into the compliant settlement infrastructure by implementing `IMatchingEngine`.
+
+- **Identity.sol** - KYC whitelisting and role-based access (TRADER, ISSUER, OPERATOR, REGULATOR). All transfers enforce whitelisting.
+- **SecuritiesToken.sol** - ERC-20 tokenized securities. Transfers restricted to whitelisted addresses.
+- **CashToken.sol** - ERC-20 tokenized EUR for DvP cash leg.
+- **Registry.sol** - Tracks all deployed compliant token contracts.
+- **OrderBook.sol** - On-chain order book implementing `IMatchingEngine`. Price-time priority matching. Triggers DvP on match.
+- **Settlement.sol** - Atomic DvP settlement. Both token transfers succeed or both revert. Generic - works with any `IMatchingEngine` implementation.
+
+### Deployment order
+Identity → Registry → Settlement → OrderBook → SecuritiesToken → CashToken → Register tokens
+
 ## Hardhat
 
 ### Compile contracts
@@ -51,9 +66,14 @@ Should return all 4 validator addresses.
 npx hardhat compile
 ```
 
-### Run tests
+### Run tests (local)
 ```bash
 npx hardhat test
+```
+
+### Run tests (against Besu network)
+```bash
+npx hardhat test --network besu
 ```
 
 ### Deploy to Besu network
@@ -68,7 +88,14 @@ npx hardhat run scripts/deploy.js --network besu
 - **Layer 3**: KYC/Identity Layer (eIDAS-compatible, off-chain)
 - **Layer 4**: User & Regulator Interfaces (React, MetaMask, Observer Node)
 
+## Progress
+- [x] February - Besu network setup, Hardhat toolchain
+- [x] March - Identity, SecuritiesToken, CashToken, Registry
+- [x] April - OrderBook, Settlement, end-to-end DvP flow tested
+- [ ] May - KYC/eIDAS integration, React frontend
+- [ ] June - Evaluation and performance testing
+- [ ] July - Dissertation writeup
 
-
-# TODO:
--Start implementing the actual Solidity contracts (Interfaces)
+## TODO this month
+- Hardhat UnitTests
+- Make the contracts run against Besu
