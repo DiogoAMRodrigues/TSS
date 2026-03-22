@@ -65,6 +65,7 @@ contract OrderBook is IMatchingEngine {
         uint256 amountIn,
         uint256 amountOut
     ) external override onlyWhitelisted returns (uint256 orderId) {
+        require(tokenIn != tokenOut, "OrderBook: tokenIn and tokenOut must differ");
         require(_registry.isActive(tokenIn), "OrderBook: tokenIn not registered");
         require(_registry.isActive(tokenOut), "OrderBook: tokenOut not registered");
         require(amountIn > 0 && amountOut > 0, "OrderBook: amounts must be > 0");

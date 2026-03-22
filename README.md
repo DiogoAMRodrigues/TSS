@@ -71,7 +71,8 @@ npx hardhat compile
 npx hardhat test
 ```
 
-### Run tests (against Besu network)
+### Run tests (against Besu network)  
+Before running against Besu, in `test/Identity.test.js` comment out the two lines marked `// LOCAL ONLY` in the Expiry Behavior tests  
 ```bash
 npx hardhat test --network besu
 ```
@@ -97,5 +98,4 @@ npx hardhat run scripts/deploy.js --network besu
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Hardhat UnitTests
 - Make the contracts run against Besu

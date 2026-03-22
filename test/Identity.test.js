@@ -180,6 +180,11 @@ describe("Identity", function () {
     it("should return isExpired true for non-whitelisted address", async function () {
       expect(await identity.isExpired(stranger.address)).to.be.true;
     });
+
+    it("should never expire for deployer with max uint256 expiry", async function () {
+      expect(await identity.isWhitelisted(deployer.address)).to.be.true;
+      expect(await identity.isExpired(deployer.address)).to.be.false;
+    });
   });
 
   describe("Expiry Behavior", function () {
@@ -198,7 +203,7 @@ describe("Identity", function () {
 
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       expect(await identity.isExpired(trader.address)).to.be.true;
-      });
+    });
 
     it("should allow re-whitelisting after expiry", async function () {
       await identity.whitelist(trader.address, TRADER_ROLE);
@@ -217,29 +222,29 @@ describe("Identity", function () {
 
       await identity.whitelist(trader.address, TRADER_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
-      });
+    });
+  });
+
+  describe("Events", function () {
+    it("should emit UserWhitelisted on whitelist", async function () {
+      await expect(identity.whitelist(trader.address, TRADER_ROLE))
+        .to.emit(identity, "UserWhitelisted")
+        .withArgs(trader.address, TRADER_ROLE);
     });
 
-    describe("Events", function () {
-      it("should emit UserWhitelisted on whitelist", async function () {
-        await expect(identity.whitelist(trader.address, TRADER_ROLE))
-          .to.emit(identity, "UserWhitelisted")
-          .withArgs(trader.address, TRADER_ROLE);
-      });
+    it("should emit UserRevoked on revoke", async function () {
+      await identity.whitelist(trader.address, TRADER_ROLE);
+      await expect(identity.revoke(trader.address))
+        .to.emit(identity, "UserRevoked")
+        .withArgs(trader.address);
+    });
 
-      it("should emit UserRevoked on revoke", async function () {
-        await identity.whitelist(trader.address, TRADER_ROLE);
-        await expect(identity.revoke(trader.address))
-          .to.emit(identity, "UserRevoked")
-          .withArgs(trader.address);
-      });
-
-      it("should emit AttestationUpdated on updateAttestation", async function () {
-        await identity.whitelist(trader.address, TRADER_ROLE);
-        const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
-        await expect(identity.updateAttestation(trader.address, newExpiry))
-          .to.emit(identity, "AttestationUpdated")
-          .withArgs(trader.address, newExpiry);
-      });
+    it("should emit AttestationUpdated on updateAttestation", async function () {
+      await identity.whitelist(trader.address, TRADER_ROLE);
+      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
+      await expect(identity.updateAttestation(trader.address, newExpiry))
+        .to.emit(identity, "AttestationUpdated")
+        .withArgs(trader.address, newExpiry);
+    });
   });
 });

@@ -66,6 +66,7 @@ contract Registry is IRegistry {
     }
 
     function reactivateAsset(address tokenAddress) external override onlyOperator {
+        require(_assets[tokenAddress].registeredAt > 0, "Registry: asset not registered");
         require(!_assets[tokenAddress].active, "Registry: asset already active");
         _assets[tokenAddress].active = true;
         emit AssetReactivated(tokenAddress);
