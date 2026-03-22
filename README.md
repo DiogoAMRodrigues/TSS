@@ -20,22 +20,25 @@ TSS/
 │   └── registry/       # Registry.sol - asset directory
 ├── networkFiles/       # Generated validator keys and genesis (gitignored)
 ├── node1-4/            # Validator node data (keys gitignored)
-├── scripts/            # deploy.js
+├── scripts/            # deploy.js, reset-network.ps1
 ├── test/               # Hardhat unit tests
 └── docs/               # Architecture documentation
 ```
 
 ## Network Setup
 
-### Generate validator keys and genesis (already done)
-```bash
-besu operator generate-blockchain-config --config-file=ibftConfigFile.json --to=networkFiles --private-key-file-name=key
+### First time / full reset (regenerates keys and genesis)
+Only needed if you need to wipe the network from scratch. Stops containers, deletes node data, regenerates keys, and updates docker-compose automatically.
+```powershell
+docker compose down
+.\scripts\reset-network.ps1
 ```
 
 ### Start the 4-node IBFT 2.0 network
 ```bash
 docker compose up
 ```
+Wait until you see `Imported #1`, `#2`, etc. across all 4 nodes before doing anything else.
 Note: Node1 has a static IP (172.16.239.11) so nodes 2, 3 and 4 can use it as bootnode.
 
 ### Verify network is running
@@ -71,15 +74,40 @@ npx hardhat compile
 npx hardhat test
 ```
 
-### Run tests (against Besu network)  
-Before running against Besu, in `test/Identity.test.js` comment out the two lines marked `// LOCAL ONLY` in the Expiry Behavior tests  
+### Run tests (against Besu network)
+Requires the network to be running (`docker compose up` in a separate terminal).  
+Before running, comment out the two lines marked `// LOCAL ONLY` in the Expiry Behavior tests in `test/Identity.test.js`.
 ```bash
 npx hardhat test --network besu
 ```
 
 ### Deploy to Besu network
+Requires the network to be running (`docker compose up` in a separate terminal).
 ```bash
 npx hardhat run scripts/deploy.js --network besu
+```
+
+## Typical workflow
+
+**Normal session** (network already set up, just starting it):
+```bash
+# Terminal 1 - start network
+docker compose up
+
+# Terminal 2 - run tests or deploy
+npx hardhat test --network besu
+npx hardhat run scripts/deploy.js --network besu
+```
+
+**Full reset** (something went wrong, or starting fresh):
+```powershell
+# Terminal 1
+docker compose down
+.\scripts\reset-network.ps1
+docker compose up
+
+# Terminal 2
+npx hardhat test --network besu
 ```
 
 ## Architecture
@@ -98,4 +126,5 @@ npx hardhat run scripts/deploy.js --network besu
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Make the contracts run against Besu
+- Run tests against Besu network
+- Start fixing issues that were identified by tests
