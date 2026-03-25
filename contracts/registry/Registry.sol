@@ -44,7 +44,7 @@ contract Registry is IRegistry {
         address issuer
     ) external override onlyOperator {
         require(tokenAddress != address(0), "Registry: zero address");
-        require(!_assets[tokenAddress].active, "Registry: asset already registered");
+        require( _assets[tokenAddress].registeredAt == 0, "Registry: asset already registered" );
 
         _assets[tokenAddress] = Asset({
             tokenAddress: tokenAddress,

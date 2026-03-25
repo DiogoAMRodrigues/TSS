@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 describe("Registry", function () {
   let identity, registry;
@@ -10,6 +10,12 @@ describe("Registry", function () {
   const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
   const ERC1155_TYPE = ethers.encodeBytes32String("ERC1155");
 
+  async function send(txPromise) {
+    const tx = await txPromise;
+    await tx.wait();
+    return tx;
+  }
+
   beforeEach(async function () {
     [deployer, issuer, stranger, addr1, addr2] = await ethers.getSigners();
 
@@ -17,7 +23,7 @@ describe("Registry", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await identity.whitelist(issuer.address, ISSUER_ROLE);
+    await send(identity.whitelist(issuer.address, ISSUER_ROLE));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());
@@ -32,13 +38,13 @@ describe("Registry", function () {
 
   describe("Asset Registration", function () {
     it("should allow operator to register an asset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       expect(await registry.isRegistered(addr1.address)).to.be.true;
       expect(await registry.isActive(addr1.address)).to.be.true;
     });
 
     it("should store correct asset data", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       const asset = await registry.getAsset(addr1.address);
       expect(asset.tokenAddress).to.equal(addr1.address);
       expect(asset.assetType).to.equal(ERC20_TYPE);
@@ -48,14 +54,14 @@ describe("Registry", function () {
     });
 
     it("should support different asset types", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.registerAsset(addr2.address, ERC1155_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.registerAsset(addr2.address, ERC1155_TYPE, issuer.address));
       expect((await registry.getAsset(addr1.address)).assetType).to.equal(ERC20_TYPE);
       expect((await registry.getAsset(addr2.address)).assetType).to.equal(ERC1155_TYPE);
     });
 
     it("should allow registering asset with zero address issuer", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, ethers.ZeroAddress);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, ethers.ZeroAddress));
       expect(await registry.isRegistered(addr1.address)).to.be.true;
     });
 
@@ -78,21 +84,21 @@ describe("Registry", function () {
     });
 
     it("should reject registering same asset twice", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       await expect(
         registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address)
       ).to.be.revertedWith("Registry: asset already registered");
     });
 
     it("should add asset to getAllAssets list", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       const assets = await registry.getAllAssets();
       expect(assets).to.include(addr1.address);
     });
 
     it("should track multiple registered assets", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.registerAsset(addr2.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.registerAsset(addr2.address, ERC20_TYPE, issuer.address));
       const assets = await registry.getAllAssets();
       expect(assets.length).to.equal(2);
       expect(assets).to.include(addr1.address);
@@ -102,29 +108,29 @@ describe("Registry", function () {
 
   describe("Asset Deactivation", function () {
     it("should allow operator to deactivate an asset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
       expect(await registry.isActive(addr1.address)).to.be.false;
       expect(await registry.isRegistered(addr1.address)).to.be.true;
     });
 
     it("should keep asset in getAllAssets after deactivation", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
       const assets = await registry.getAllAssets();
       expect(assets).to.include(addr1.address);
     });
 
     it("should reject deactivation from non-operator", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       await expect(
         registry.connect(stranger).deactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: caller is not an operator");
     });
 
     it("should reject deactivating an already inactive asset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
       await expect(
         registry.deactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: asset not active");
@@ -139,22 +145,22 @@ describe("Registry", function () {
 
   describe("Asset Reactivation", function () {
     it("should allow operator to reactivate a deactivated asset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
-      await registry.reactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
+      await send(registry.reactivateAsset(addr1.address));
       expect(await registry.isActive(addr1.address)).to.be.true;
     });
 
     it("should reject reactivation from non-operator", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
       await expect(
         registry.connect(stranger).reactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: caller is not an operator");
     });
 
     it("should reject reactivating an already active asset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       await expect(
         registry.reactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: asset already active");
@@ -167,11 +173,11 @@ describe("Registry", function () {
     });
 
     it("should allow deactivate and reactivate cycle multiple times", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
-      await registry.reactivateAsset(addr1.address);
-      await registry.deactivateAsset(addr1.address);
-      await registry.reactivateAsset(addr1.address);
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
+      await send(registry.reactivateAsset(addr1.address));
+      await send(registry.deactivateAsset(addr1.address));
+      await send(registry.reactivateAsset(addr1.address));
       expect(await registry.isActive(addr1.address)).to.be.true;
     });
   });
@@ -200,22 +206,28 @@ describe("Registry", function () {
 
   describe("Events", function () {
     it("should emit AssetRegistered on registerAsset", async function () {
-      await expect(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address))
+      const tx = await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
+      await tx.wait();
+      await expect(tx)
         .to.emit(registry, "AssetRegistered")
         .withArgs(addr1.address, ERC20_TYPE, issuer.address);
     });
 
     it("should emit AssetDeactivated on deactivateAsset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await expect(registry.deactivateAsset(addr1.address))
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      const tx = await registry.deactivateAsset(addr1.address);
+      await tx.wait();
+      await expect(tx)
         .to.emit(registry, "AssetDeactivated")
         .withArgs(addr1.address);
     });
 
     it("should emit AssetReactivated on reactivateAsset", async function () {
-      await registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address);
-      await registry.deactivateAsset(addr1.address);
-      await expect(registry.reactivateAsset(addr1.address))
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(registry.deactivateAsset(addr1.address));
+      const tx = await registry.reactivateAsset(addr1.address);
+      await tx.wait();
+      await expect(tx)
         .to.emit(registry, "AssetReactivated")
         .withArgs(addr1.address);
     });

@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 describe("Identity", function () {
   let identity;
@@ -9,6 +9,21 @@ describe("Identity", function () {
   const OPERATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("OPERATOR"));
   const ISSUER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ISSUER"));
   const REGULATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("REGULATOR"));
+
+  async function send(txPromise) {
+    const tx = await txPromise;
+    await tx.wait();
+    return tx;
+  }
+
+  async function waitForExpiry() {
+    if (network.name === "besu") {
+      await new Promise(r => setTimeout(r, 12000));
+    } else {
+      await ethers.provider.send("evm_increaseTime", [20]);
+      await ethers.provider.send("evm_mine");
+    }
+  }
 
   beforeEach(async function () {
     [deployer, trader, operator2, stranger] = await ethers.getSigners();
@@ -51,38 +66,38 @@ describe("Identity", function () {
 
   describe("Whitelisting", function () {
     it("should allow operator to whitelist a TRADER", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
       expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
     });
 
     it("should allow operator to whitelist an ISSUER", async function () {
-      await identity.whitelist(trader.address, ISSUER_ROLE);
+      await send(identity.whitelist(trader.address, ISSUER_ROLE));
       expect(await identity.getRole(trader.address)).to.equal(ISSUER_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should allow operator to whitelist a REGULATOR", async function () {
-      await identity.whitelist(trader.address, REGULATOR_ROLE);
+      await send(identity.whitelist(trader.address, REGULATOR_ROLE));
       expect(await identity.getRole(trader.address)).to.equal(REGULATOR_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should allow operator to whitelist another OPERATOR", async function () {
-      await identity.whitelist(operator2.address, OPERATOR_ROLE);
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
       expect(await identity.getRole(operator2.address)).to.equal(OPERATOR_ROLE);
       expect(await identity.isWhitelisted(operator2.address)).to.be.true;
     });
 
     it("should allow a newly whitelisted OPERATOR to whitelist others", async function () {
-      await identity.whitelist(operator2.address, OPERATOR_ROLE);
-      await identity.connect(operator2).whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should overwrite role when whitelisting same address twice", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
-      await identity.whitelist(trader.address, ISSUER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, ISSUER_ROLE));
       expect(await identity.getRole(trader.address)).to.equal(ISSUER_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
@@ -113,27 +128,27 @@ describe("Identity", function () {
 
   describe("Revocation", function () {
     it("should allow operator to revoke a user", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
-      await identity.revoke(trader.address);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.revoke(trader.address));
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
     });
 
     it("should not allow revoked user to be treated as whitelisted", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
-      await identity.revoke(trader.address);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.revoke(trader.address));
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
     });
 
     it("should not allow revoked OPERATOR to whitelist others", async function () {
-      await identity.whitelist(operator2.address, OPERATOR_ROLE);
-      await identity.revoke(operator2.address);
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
       await expect(
         identity.connect(operator2).whitelist(trader.address, TRADER_ROLE)
       ).to.be.revertedWith("Identity: caller is not an operator");
     });
 
     it("should reject revocation from non-operator", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       await expect(
         identity.connect(stranger).revoke(trader.address)
       ).to.be.revertedWith("Identity: caller is not an operator");
@@ -148,9 +163,9 @@ describe("Identity", function () {
 
   describe("Attestation", function () {
     it("should allow operator to update attestation expiry", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
-      await identity.updateAttestation(trader.address, newExpiry);
+      await send(identity.updateAttestation(trader.address, newExpiry));
       expect(await identity.isExpired(trader.address)).to.be.false;
     });
 
@@ -162,7 +177,7 @@ describe("Identity", function () {
     });
 
     it("should reject expiry in the past", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       const pastExpiry = Math.floor(Date.now() / 1000) - 1000;
       await expect(
         identity.updateAttestation(trader.address, pastExpiry)
@@ -170,7 +185,7 @@ describe("Identity", function () {
     });
 
     it("should reject updating attestation from non-operator", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
       await expect(
         identity.connect(stranger).updateAttestation(trader.address, newExpiry)
@@ -189,60 +204,58 @@ describe("Identity", function () {
 
   describe("Expiry Behavior", function () {
     it("should mark user as not whitelisted after expiry", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
 
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
-      await identity.updateAttestation(trader.address, nearExpiry);
+      await send(identity.updateAttestation(trader.address, nearExpiry));
 
-      // LOCAL ONLY: evm_increaseTime is Hardhat-specific, not supported on Besu.
-      // When running against Besu (npx hardhat test --network besu),
-      // comment out the next 2 lines and instead wait for real time to pass.
-      await ethers.provider.send("evm_increaseTime", [20]);
-      await ethers.provider.send("evm_mine");
+      await waitForExpiry();
 
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       expect(await identity.isExpired(trader.address)).to.be.true;
     });
 
     it("should allow re-whitelisting after expiry", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
 
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
-      await identity.updateAttestation(trader.address, nearExpiry);
+      await send(identity.updateAttestation(trader.address, nearExpiry));
 
-      // LOCAL ONLY: evm_increaseTime is Hardhat-specific, not supported on Besu.
-      // When running against Besu (npx hardhat test --network besu),
-      // comment out the next 2 lines and instead wait for real time to pass.
-      await ethers.provider.send("evm_increaseTime", [20]);
-      await ethers.provider.send("evm_mine");
+      await waitForExpiry();
 
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
 
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
   });
 
   describe("Events", function () {
     it("should emit UserWhitelisted on whitelist", async function () {
-      await expect(identity.whitelist(trader.address, TRADER_ROLE))
+      const tx = await identity.whitelist(trader.address, TRADER_ROLE);
+      await tx.wait();
+      await expect(tx)
         .to.emit(identity, "UserWhitelisted")
         .withArgs(trader.address, TRADER_ROLE);
     });
 
     it("should emit UserRevoked on revoke", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
-      await expect(identity.revoke(trader.address))
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      const tx = await identity.revoke(trader.address);
+      await tx.wait();
+      await expect(tx)
         .to.emit(identity, "UserRevoked")
         .withArgs(trader.address);
     });
 
     it("should emit AttestationUpdated on updateAttestation", async function () {
-      await identity.whitelist(trader.address, TRADER_ROLE);
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
       const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
-      await expect(identity.updateAttestation(trader.address, newExpiry))
+      const tx = await identity.updateAttestation(trader.address, newExpiry);
+      await tx.wait();
+      await expect(tx)
         .to.emit(identity, "AttestationUpdated")
         .withArgs(trader.address, newExpiry);
     });

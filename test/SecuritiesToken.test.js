@@ -12,6 +12,12 @@ describe("SecuritiesToken", function () {
   const TWO_TOKENS = ethers.parseEther("2");
   const ZERO = BigInt(0);
 
+  async function send(txPromise) {
+    const tx = await txPromise;
+    await tx.wait();
+    return tx;
+  }
+
   beforeEach(async function () {
     [deployer, trader1, trader2, issuer, stranger] = await ethers.getSigners();
 
@@ -19,9 +25,9 @@ describe("SecuritiesToken", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await identity.whitelist(trader1.address, TRADER_ROLE);
-    await identity.whitelist(trader2.address, TRADER_ROLE);
-    await identity.whitelist(issuer.address, ISSUER_ROLE);
+    await send(identity.whitelist(trader1.address, TRADER_ROLE));
+    await send(identity.whitelist(trader2.address, TRADER_ROLE));
+    await send(identity.whitelist(issuer.address, ISSUER_ROLE));
 
     const SecuritiesToken = await ethers.getContractFactory("SecuritiesToken");
     securitiesToken = await SecuritiesToken.deploy(
@@ -69,18 +75,18 @@ describe("SecuritiesToken", function () {
 
   describe("Minting", function () {
     it("should allow operator to mint to whitelisted address", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
       expect(await securitiesToken.totalSupply()).to.equal(ONE_TOKEN);
     });
 
     it("should allow issuer to mint to whitelisted address", async function () {
-      await securitiesToken.connect(issuer).mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.connect(issuer).mint(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow minting zero amount", async function () {
-      await securitiesToken.mint(trader1.address, 0);
+      await send(securitiesToken.mint(trader1.address, 0));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(0);
       expect(await securitiesToken.totalSupply()).to.equal(0);
     });
@@ -104,42 +110,42 @@ describe("SecuritiesToken", function () {
     });
 
     it("should correctly update totalSupply on multiple mints", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.mint(trader2.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.mint(trader2.address, ONE_TOKEN));
       expect(await securitiesToken.totalSupply()).to.equal(TWO_TOKENS);
     });
   });
 
   describe("Burning", function () {
     it("should allow operator to burn tokens", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.burn(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.burn(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(0);
       expect(await securitiesToken.totalSupply()).to.equal(0);
     });
 
     it("should allow burning zero amount", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.burn(trader1.address, 0);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.burn(trader1.address, 0));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
     it("should reject burning from issuer", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       await expect(
         securitiesToken.connect(issuer).burn(trader1.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: caller is not an operator");
     });
 
     it("should reject burning from non-operator", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       await expect(
         securitiesToken.connect(trader1).burn(trader1.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: caller is not an operator");
     });
 
     it("should reject burning more than balance", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       await expect(
         securitiesToken.burn(trader1.address, TWO_TOKENS)
       ).to.be.revertedWith("SecuritiesToken: insufficient balance");
@@ -154,23 +160,23 @@ describe("SecuritiesToken", function () {
 
   describe("Transfer", function () {
     beforeEach(async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
     });
 
     it("should allow transfer between whitelisted addresses", async function () {
-      await securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN);
+      await send(securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(0);
       expect(await securitiesToken.balanceOf(trader2.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow transferring zero amount", async function () {
-      await securitiesToken.connect(trader1).transfer(trader2.address, 0);
+      await send(securitiesToken.connect(trader1).transfer(trader2.address, 0));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
       expect(await securitiesToken.balanceOf(trader2.address)).to.equal(0);
     });
 
     it("should allow transfer to self", async function () {
-      await securitiesToken.connect(trader1).transfer(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.connect(trader1).transfer(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
@@ -181,7 +187,7 @@ describe("SecuritiesToken", function () {
     });
 
     it("should reject transfer from non-whitelisted address", async function () {
-      await identity.revoke(trader1.address);
+      await send(identity.revoke(trader1.address));
       await expect(
         securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: sender not whitelisted");
@@ -196,22 +202,22 @@ describe("SecuritiesToken", function () {
 
   describe("TransferFrom", function () {
     beforeEach(async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.connect(trader1).approve(deployer.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.connect(trader1).approve(deployer.address, ONE_TOKEN));
     });
 
     it("should allow transferFrom with sufficient allowance", async function () {
-      await securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN);
+      await send(securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader2.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow transferFrom where from == to", async function () {
-      await securitiesToken.transferFrom(trader1.address, trader1.address, ONE_TOKEN);
+      await send(securitiesToken.transferFrom(trader1.address, trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow transferFrom of zero amount", async function () {
-      await securitiesToken.transferFrom(trader1.address, trader2.address, 0);
+      await send(securitiesToken.transferFrom(trader1.address, trader2.address, 0));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
@@ -222,7 +228,7 @@ describe("SecuritiesToken", function () {
     });
 
     it("should reject transferFrom with zero allowance", async function () {
-      await securitiesToken.connect(trader1).approve(deployer.address, 0);
+      await send(securitiesToken.connect(trader1).approve(deployer.address, 0));
       await expect(
         securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: insufficient allowance");
@@ -235,51 +241,51 @@ describe("SecuritiesToken", function () {
     });
 
     it("should reject transferFrom from non-whitelisted address", async function () {
-      await identity.revoke(trader1.address);
+      await send(identity.revoke(trader1.address));
       await expect(
         securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: sender not whitelisted");
     });
 
     it("should reduce allowance after transferFrom", async function () {
-      await securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN);
+      await send(securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN));
       expect(await securitiesToken.allowance(trader1.address, deployer.address)).to.equal(0);
     });
   });
 
   describe("Approval", function () {
     it("should allow setting allowance", async function () {
-      await securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN);
+      await send(securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN));
       expect(await securitiesToken.allowance(trader1.address, trader2.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow overwriting allowance", async function () {
-      await securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN);
-      await securitiesToken.connect(trader1).approve(trader2.address, TWO_TOKENS);
+      await send(securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN));
+      await send(securitiesToken.connect(trader1).approve(trader2.address, TWO_TOKENS));
       expect(await securitiesToken.allowance(trader1.address, trader2.address)).to.equal(TWO_TOKENS);
     });
 
     it("should allow setting allowance to zero", async function () {
-      await securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN);
-      await securitiesToken.connect(trader1).approve(trader2.address, 0);
+      await send(securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN));
+      await send(securitiesToken.connect(trader1).approve(trader2.address, 0));
       expect(await securitiesToken.allowance(trader1.address, trader2.address)).to.equal(0);
     });
 
     it("should allow approving non-whitelisted spender", async function () {
-      await securitiesToken.connect(trader1).approve(stranger.address, ONE_TOKEN);
+      await send(securitiesToken.connect(trader1).approve(stranger.address, ONE_TOKEN));
       expect(await securitiesToken.allowance(trader1.address, stranger.address)).to.equal(ONE_TOKEN);
     });
   });
 
   describe("Pause", function () {
     it("should allow operator to pause", async function () {
-      await securitiesToken.pause();
+      await send(securitiesToken.pause());
       expect(await securitiesToken.paused()).to.be.true;
     });
 
     it("should allow operator to unpause", async function () {
-      await securitiesToken.pause();
-      await securitiesToken.unpause();
+      await send(securitiesToken.pause());
+      await send(securitiesToken.unpause());
       expect(await securitiesToken.paused()).to.be.false;
     });
 
@@ -290,74 +296,82 @@ describe("SecuritiesToken", function () {
     });
 
     it("should reject unpause from non-operator", async function () {
-      await securitiesToken.pause();
+      await send(securitiesToken.pause());
       await expect(
         securitiesToken.connect(stranger).unpause()
       ).to.be.revertedWith("SecuritiesToken: caller is not an operator");
     });
 
     it("should reject transfer when paused", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.pause();
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.pause());
       await expect(
         securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: contract is paused");
     });
 
     it("should reject transferFrom when paused", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.connect(trader1).approve(deployer.address, ONE_TOKEN);
-      await securitiesToken.pause();
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.connect(trader1).approve(deployer.address, ONE_TOKEN));
+      await send(securitiesToken.pause());
       await expect(
         securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: contract is paused");
     });
 
     it("should allow transfer after unpause", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.pause();
-      await securitiesToken.unpause();
-      await securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.pause());
+      await send(securitiesToken.unpause());
+      await send(securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader2.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow mint when paused", async function () {
-      await securitiesToken.pause();
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.pause());
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
     });
 
     it("should allow burn when paused", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await securitiesToken.pause();
-      await securitiesToken.burn(trader1.address, ONE_TOKEN);
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.pause());
+      await send(securitiesToken.burn(trader1.address, ONE_TOKEN));
       expect(await securitiesToken.balanceOf(trader1.address)).to.equal(0);
     });
   });
 
   describe("Events", function () {
     it("should emit TokensMinted on mint", async function () {
-      await expect(securitiesToken.mint(trader1.address, ONE_TOKEN))
+      const tx = await securitiesToken.mint(trader1.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
         .to.emit(securitiesToken, "TokensMinted")
         .withArgs(trader1.address, ONE_TOKEN);
     });
 
     it("should emit TokensBurned on burn", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await expect(securitiesToken.burn(trader1.address, ONE_TOKEN))
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      const tx = await securitiesToken.burn(trader1.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
         .to.emit(securitiesToken, "TokensBurned")
         .withArgs(trader1.address, ONE_TOKEN);
     });
 
     it("should emit TokensTransferred on transfer", async function () {
-      await securitiesToken.mint(trader1.address, ONE_TOKEN);
-      await expect(securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN))
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      const tx = await securitiesToken.connect(trader1).transfer(trader2.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
         .to.emit(securitiesToken, "TokensTransferred")
         .withArgs(trader1.address, trader2.address, ONE_TOKEN);
     });
 
     it("should emit Approval on approve", async function () {
-      await expect(securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN))
+      const tx = await securitiesToken.connect(trader1).approve(trader2.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
         .to.emit(securitiesToken, "Approval")
         .withArgs(trader1.address, trader2.address, ONE_TOKEN);
     });

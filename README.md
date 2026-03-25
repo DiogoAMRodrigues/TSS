@@ -126,5 +126,4 @@ npx hardhat test --network besu
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Run tests against Besu network
-- Start fixing issues that were identified by tests
+- Start looking into KYC/eIDAS

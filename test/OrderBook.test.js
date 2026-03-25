@@ -11,6 +11,13 @@ describe("OrderBook", function () {
   const ONE_TOKEN = ethers.parseEther("1");
   const TWO_TOKENS = ethers.parseEther("2");
 
+  // Helper for Besu tx.wait()
+  async function send(txPromise) {
+    const tx = await txPromise;
+    await tx.wait();
+    return tx;
+  }
+
   beforeEach(async function () {
     [deployer, buyer, seller, stranger] = await ethers.getSigners();
 
@@ -18,8 +25,8 @@ describe("OrderBook", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await identity.whitelist(buyer.address, TRADER_ROLE);
-    await identity.whitelist(seller.address, TRADER_ROLE);
+    await send(identity.whitelist(buyer.address, TRADER_ROLE));
+    await send(identity.whitelist(seller.address, TRADER_ROLE));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());
@@ -52,14 +59,14 @@ describe("OrderBook", function () {
     );
     await cashToken.waitForDeployment();
 
-    await registry.registerAsset(await securitiesToken.getAddress(), ERC20_TYPE, deployer.address);
-    await registry.registerAsset(await cashToken.getAddress(), ERC20_TYPE, deployer.address);
+    await send(registry.registerAsset(await securitiesToken.getAddress(), ERC20_TYPE, deployer.address));
+    await send(registry.registerAsset(await cashToken.getAddress(), ERC20_TYPE, deployer.address));
 
-    await securitiesToken.mint(seller.address, ONE_TOKEN);
-    await cashToken.mint(buyer.address, ONE_TOKEN);
+    await send(securitiesToken.mint(seller.address, ONE_TOKEN));
+    await send(cashToken.mint(buyer.address, ONE_TOKEN));
 
-    await securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN);
-    await cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN);
+    await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
+    await send(cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN));
   });
 
   describe("Deployment", function () {
@@ -70,23 +77,23 @@ describe("OrderBook", function () {
 
   describe("Order Submission", function () {
     it("should allow whitelisted trader to submit order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       const order = await orderBook.getOrder(1);
       expect(order.trader).to.equal(buyer.address);
       expect(order.status).to.equal(0); // OPEN
     });
 
     it("should allow operator to submit order", async function () {
-      await cashToken.mint(deployer.address, ONE_TOKEN);
-      await orderBook.connect(deployer).submitOrder(
+      await send(cashToken.mint(deployer.address, ONE_TOKEN));
+      await send(orderBook.connect(deployer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       const order = await orderBook.getOrder(1);
       expect(order.trader).to.equal(deployer.address);
     });
@@ -171,7 +178,7 @@ describe("OrderBook", function () {
     });
 
     it("should reject order with deactivated tokenIn", async function () {
-      await registry.deactivateAsset(await cashToken.getAddress());
+      await send(registry.deactivateAsset(await cashToken.getAddress()));
       await expect(
         orderBook.connect(buyer).submitOrder(
           await cashToken.getAddress(),
@@ -202,11 +209,11 @@ describe("OrderBook", function () {
     });
 
     it("should correctly store order data", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       const order = await orderBook.getOrder(1);
       expect(order.orderId).to.equal(1);
       expect(order.trader).to.equal(buyer.address);
@@ -215,25 +222,23 @@ describe("OrderBook", function () {
       expect(order.amountIn).to.equal(ONE_TOKEN);
       expect(order.amountOut).to.equal(ONE_TOKEN);
       expect(order.status).to.equal(0); // OPEN
-      // LOCAL ONLY: timestamp check uses block time which is deterministic in Hardhat.
-      // On Besu, timestamp will be real wall clock time - just verify it is non-zero.
       expect(order.timestamp).to.be.gt(0);
     });
 
     it("should increment order IDs correctly", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(buyer).cancelOrder(1);
+      ));
+      await send(orderBook.connect(buyer).cancelOrder(1));
 
-      await cashToken.mint(buyer.address, ONE_TOKEN);
-      await orderBook.connect(buyer).submitOrder(
+      await send(cashToken.mint(buyer.address, ONE_TOKEN));
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       const order2 = await orderBook.getOrder(2);
       expect(order2.orderId).to.equal(2);
@@ -242,72 +247,72 @@ describe("OrderBook", function () {
 
   describe("Order Cancellation", function () {
     it("should allow trader to cancel their own order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(buyer).cancelOrder(1);
+      ));
+      await send(orderBook.connect(buyer).cancelOrder(1));
       const order = await orderBook.getOrder(1);
       expect(order.status).to.equal(2); // CANCELLED
     });
 
     it("should allow operator to cancel any order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(deployer).cancelOrder(1);
+      ));
+      await send(orderBook.connect(deployer).cancelOrder(1));
       const order = await orderBook.getOrder(1);
       expect(order.status).to.equal(2); // CANCELLED
     });
 
     it("should reject cancellation from non-owner non-operator", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       await expect(
         orderBook.connect(seller).cancelOrder(1)
       ).to.be.revertedWith("OrderBook: not authorized");
     });
 
     it("should reject cancellation from stranger", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       await expect(
         orderBook.connect(stranger).cancelOrder(1)
       ).to.be.revertedWith("OrderBook: not authorized");
     });
 
     it("should reject cancelling an already cancelled order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(buyer).cancelOrder(1);
+      ));
+      await send(orderBook.connect(buyer).cancelOrder(1));
       await expect(
         orderBook.connect(buyer).cancelOrder(1)
       ).to.be.revertedWith("OrderBook: order not open");
     });
 
     it("should reject cancelling a matched order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       await expect(
         orderBook.connect(buyer).cancelOrder(1)
       ).to.be.revertedWith("OrderBook: order not open");
@@ -316,16 +321,16 @@ describe("OrderBook", function () {
 
   describe("Order Matching and Settlement", function () {
     it("should match compatible orders and execute DvP", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect(await securitiesToken.balanceOf(buyer.address)).to.equal(ONE_TOKEN);
       expect(await cashToken.balanceOf(seller.address)).to.equal(ONE_TOKEN);
@@ -334,135 +339,134 @@ describe("OrderBook", function () {
     });
 
     it("should mark both orders as MATCHED after settlement", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect((await orderBook.getOrder(1)).status).to.equal(1); // MATCHED
       expect((await orderBook.getOrder(2)).status).to.equal(1); // MATCHED
     });
 
     it("should store match data correctly", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       const match = await orderBook.getMatch(1);
       expect(match.matchId).to.equal(1);
-      // order1 is seller's order (triggered the match), order2 is buyer's original order
       expect(match.buyer).to.equal(seller.address);
       expect(match.seller).to.equal(buyer.address);
     });
 
     it("should not match orders with incompatible tokens", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
-      await cashToken.mint(seller.address, ONE_TOKEN);
-      await cashToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN);
+      await send(cashToken.mint(seller.address, ONE_TOKEN));
+      await send(cashToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
 
-      await orderBook.connect(seller).submitOrder(
+      await send(orderBook.connect(seller).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect((await orderBook.getOrder(1)).status).to.equal(0); // OPEN
       expect((await orderBook.getOrder(2)).status).to.equal(0); // OPEN
     });
 
     it("should not match a cancelled order", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(buyer).cancelOrder(1);
+      ));
+      await send(orderBook.connect(buyer).cancelOrder(1));
 
-      await orderBook.connect(seller).submitOrder(
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect((await orderBook.getOrder(1)).status).to.equal(2); // CANCELLED
-      expect((await orderBook.getOrder(2)).status).to.equal(0); // OPEN, no match
+      expect((await orderBook.getOrder(2)).status).to.equal(0); // OPEN
     });
 
     it("should handle multiple sequential matches correctly", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
-      await securitiesToken.mint(seller.address, ONE_TOKEN);
-      await cashToken.mint(buyer.address, ONE_TOKEN);
-      await securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN);
-      await cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN);
+      await send(securitiesToken.mint(seller.address, ONE_TOKEN));
+      await send(cashToken.mint(buyer.address, ONE_TOKEN));
+      await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
+      await send(cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN));
 
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await orderBook.connect(seller).submitOrder(
+      ));
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect((await orderBook.getOrder(3)).status).to.equal(1); // MATCHED
       expect((await orderBook.getOrder(4)).status).to.equal(1); // MATCHED
     });
 
     it("should not match orders where prices do not cross", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, TWO_TOKENS
-      );
+      ));
 
-      await orderBook.connect(seller).submitOrder(
+      await send(orderBook.connect(seller).submitOrder(
         await securitiesToken.getAddress(),
         await cashToken.getAddress(),
         ONE_TOKEN, TWO_TOKENS
-      );
+      ));
 
       expect((await orderBook.getOrder(1)).status).to.equal(0); // OPEN
       expect((await orderBook.getOrder(2)).status).to.equal(0); // OPEN
     });
 
     it("should revert match if seller has insufficient balance", async function () {
-      await securitiesToken.burn(seller.address, ONE_TOKEN);
+      await send(securitiesToken.burn(seller.address, ONE_TOKEN));
 
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       await expect(
         orderBook.connect(seller).submitOrder(
@@ -476,13 +480,13 @@ describe("OrderBook", function () {
 
   describe("Events", function () {
     it("should emit OrderSubmitted on submitOrder", async function () {
-      await expect(
-        orderBook.connect(buyer).submitOrder(
-          await cashToken.getAddress(),
-          await securitiesToken.getAddress(),
-          ONE_TOKEN, ONE_TOKEN
-        )
-      )
+      const tx = await orderBook.connect(buyer).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      );
+      await tx.wait();
+      await expect(tx)
         .to.emit(orderBook, "OrderSubmitted")
         .withArgs(
           1, buyer.address,
@@ -493,44 +497,46 @@ describe("OrderBook", function () {
     });
 
     it("should emit OrderCancelled on cancelOrder", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
-      await expect(orderBook.connect(buyer).cancelOrder(1))
+      ));
+      const tx = await orderBook.connect(buyer).cancelOrder(1);
+      await tx.wait();
+      await expect(tx)
         .to.emit(orderBook, "OrderCancelled")
         .withArgs(1, buyer.address);
     });
 
     it("should emit OrderMatched when orders match", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
+      ));
+      const tx = await orderBook.connect(seller).submitOrder(
+        await securitiesToken.getAddress(),
+        await cashToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
       );
-      await expect(
-        orderBook.connect(seller).submitOrder(
-          await securitiesToken.getAddress(),
-          await cashToken.getAddress(),
-          ONE_TOKEN, ONE_TOKEN
-        )
-      ).to.emit(orderBook, "OrderMatched");
+      await tx.wait();
+      await expect(tx).to.emit(orderBook, "OrderMatched");
     });
 
     it("should emit SettlementExecuted when orders match", async function () {
-      await orderBook.connect(buyer).submitOrder(
+      await send(orderBook.connect(buyer).submitOrder(
         await cashToken.getAddress(),
         await securitiesToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
+      ));
+      const tx = await orderBook.connect(seller).submitOrder(
+        await securitiesToken.getAddress(),
+        await cashToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
       );
-      await expect(
-        orderBook.connect(seller).submitOrder(
-          await securitiesToken.getAddress(),
-          await cashToken.getAddress(),
-          ONE_TOKEN, ONE_TOKEN
-        )
-      ).to.emit(settlement, "SettlementExecuted");
+      await tx.wait();
+      await expect(tx).to.emit(settlement, "SettlementExecuted");
     });
   });
 });

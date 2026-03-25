@@ -23,3 +23,5 @@ cache/
 
 # Logs
 npm-debug.log*
+
+genesis.json

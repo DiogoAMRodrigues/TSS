@@ -36,7 +36,7 @@ services:
       --rpc-http-cors-origins="*"
       --p2p-port=30304
       --rpc-http-port=8546
-      --bootnodes=enode://4483f8a47fceb437621e4ce9aaea61691aab9b4de52140fbcaec4375d3c142a11fc2a55cd64e5beb0214b9b2f0741728b300db051cfa28d5ec8a75c3c7b71bb8@172.16.239.11:30303
+      --bootnodes=enode://838e39b2429911feb2dad9601e6cfd8a0bc429b5660629c33b5385407e37c10ddecf4d2bcd8793a42bb87d3cb9afd08b9e89829959a6ed972966167eb36e8b85@172.16.239.11:30303
     ports:
       - "8546:8546"
       - "30304:30304"
@@ -59,7 +59,7 @@ services:
       --rpc-http-cors-origins="*"
       --p2p-port=30305
       --rpc-http-port=8547
-      --bootnodes=enode://4483f8a47fceb437621e4ce9aaea61691aab9b4de52140fbcaec4375d3c142a11fc2a55cd64e5beb0214b9b2f0741728b300db051cfa28d5ec8a75c3c7b71bb8@172.16.239.11:30303
+      --bootnodes=enode://838e39b2429911feb2dad9601e6cfd8a0bc429b5660629c33b5385407e37c10ddecf4d2bcd8793a42bb87d3cb9afd08b9e89829959a6ed972966167eb36e8b85@172.16.239.11:30303
     ports:
       - "8547:8547"
       - "30305:30305"
@@ -82,7 +82,7 @@ services:
       --rpc-http-cors-origins="*"
       --p2p-port=30306
       --rpc-http-port=8548
-      --bootnodes=enode://4483f8a47fceb437621e4ce9aaea61691aab9b4de52140fbcaec4375d3c142a11fc2a55cd64e5beb0214b9b2f0741728b300db051cfa28d5ec8a75c3c7b71bb8@172.16.239.11:30303
+      --bootnodes=enode://838e39b2429911feb2dad9601e6cfd8a0bc429b5660629c33b5385407e37c10ddecf4d2bcd8793a42bb87d3cb9afd08b9e89829959a6ed972966167eb36e8b85@172.16.239.11:30303
     ports:
       - "8548:8548"
       - "30306:30306"

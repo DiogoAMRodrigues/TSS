@@ -64,7 +64,7 @@ contract Identity is IAccessControl {
         _users[user] = UserRecord({
             role: role,
             active: true,
-            expiry: block.timestamp + 365 days
+            expiry: type(uint256).max  // no expiry on whitelist; use updateAttestation to set one
         });
         emit UserWhitelisted(user, role);
     }

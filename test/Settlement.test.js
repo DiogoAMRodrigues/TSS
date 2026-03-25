@@ -10,6 +10,13 @@ describe("Settlement", function () {
   const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
   const ONE_TOKEN = ethers.parseEther("1");
 
+  // Helper for Besu tx.wait()
+  async function send(txPromise) {
+    const tx = await txPromise;
+    await tx.wait();
+    return tx;
+  }
+
   beforeEach(async function () {
     [deployer, buyer, seller, stranger] = await ethers.getSigners();
 
@@ -17,8 +24,8 @@ describe("Settlement", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await identity.whitelist(buyer.address, TRADER_ROLE);
-    await identity.whitelist(seller.address, TRADER_ROLE);
+    await send(identity.whitelist(buyer.address, TRADER_ROLE));
+    await send(identity.whitelist(seller.address, TRADER_ROLE));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());
@@ -43,14 +50,14 @@ describe("Settlement", function () {
     );
     await cashToken.waitForDeployment();
 
-    await registry.registerAsset(await securitiesToken.getAddress(), ERC20_TYPE, deployer.address);
-    await registry.registerAsset(await cashToken.getAddress(), ERC20_TYPE, deployer.address);
+    await send(registry.registerAsset(await securitiesToken.getAddress(), ERC20_TYPE, deployer.address));
+    await send(registry.registerAsset(await cashToken.getAddress(), ERC20_TYPE, deployer.address));
 
-    await securitiesToken.mint(seller.address, ONE_TOKEN);
-    await cashToken.mint(buyer.address, ONE_TOKEN);
+    await send(securitiesToken.mint(seller.address, ONE_TOKEN));
+    await send(cashToken.mint(buyer.address, ONE_TOKEN));
 
-    await securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN);
-    await cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN);
+    await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
+    await send(cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN));
   });
 
   describe("Deployment", function () {
@@ -65,11 +72,11 @@ describe("Settlement", function () {
 
   describe("Settlement Execution", function () {
     it("should execute atomic DvP successfully", async function () {
-      await settlement.settle(
+      await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect(await securitiesToken.balanceOf(buyer.address)).to.equal(ONE_TOKEN);
       expect(await cashToken.balanceOf(seller.address)).to.equal(ONE_TOKEN);
@@ -78,11 +85,11 @@ describe("Settlement", function () {
     });
 
     it("should record settlement data correctly", async function () {
-      await settlement.settle(
+      await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       const record = await settlement.getSettlement(1);
       expect(record.buyer).to.equal(buyer.address);
@@ -107,45 +114,45 @@ describe("Settlement", function () {
     });
 
     it("should increment settlement counter correctly", async function () {
-      await settlement.settle(
+      await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
-      await securitiesToken.mint(seller.address, ONE_TOKEN);
-      await cashToken.mint(buyer.address, ONE_TOKEN);
-      await securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN);
-      await cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN);
+      await send(securitiesToken.mint(seller.address, ONE_TOKEN));
+      await send(cashToken.mint(buyer.address, ONE_TOKEN));
+      await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
+      await send(cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN));
 
-      await settlement.settle(
+      await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       const record2 = await settlement.getSettlement(2);
       expect(record2.buyer).to.equal(buyer.address);
     });
 
     it("should allow settling where buyer == seller", async function () {
-      await securitiesToken.mint(deployer.address, ONE_TOKEN);
-      await cashToken.mint(deployer.address, ONE_TOKEN);
-      await securitiesToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN);
-      await cashToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN);
+      await send(securitiesToken.mint(deployer.address, ONE_TOKEN));
+      await send(cashToken.mint(deployer.address, ONE_TOKEN));
+      await send(securitiesToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN));
+      await send(cashToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN));
 
-      await settlement.settle(
+      await send(settlement.settle(
         deployer.address, deployer.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
 
       expect(await securitiesToken.balanceOf(deployer.address)).to.equal(ONE_TOKEN);
       expect(await cashToken.balanceOf(deployer.address)).to.equal(ONE_TOKEN);
     });
 
     it("should revert entirely if second transfer fails (atomicity)", async function () {
-      await cashToken.connect(buyer).approve(await settlement.getAddress(), 0);
+      await send(cashToken.connect(buyer).approve(await settlement.getAddress(), 0));
 
       const sellerSecuritiesBefore = await securitiesToken.balanceOf(seller.address);
       const buyerCashBefore = await cashToken.balanceOf(buyer.address);
@@ -183,7 +190,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement with revoked buyer", async function () {
-      await identity.revoke(buyer.address);
+      await send(identity.revoke(buyer.address));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -194,7 +201,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement with revoked seller", async function () {
-      await identity.revoke(seller.address);
+      await send(identity.revoke(seller.address));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -237,7 +244,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement with deactivated securities token", async function () {
-      await registry.deactivateAsset(await securitiesToken.getAddress());
+      await send(registry.deactivateAsset(await securitiesToken.getAddress()));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -248,7 +255,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement with deactivated cash token", async function () {
-      await registry.deactivateAsset(await cashToken.getAddress());
+      await send(registry.deactivateAsset(await cashToken.getAddress()));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -279,7 +286,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement when securities allowance insufficient", async function () {
-      await securitiesToken.connect(seller).approve(await settlement.getAddress(), 0);
+      await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), 0));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -290,7 +297,7 @@ describe("Settlement", function () {
     });
 
     it("should reject settlement when cash allowance insufficient", async function () {
-      await cashToken.connect(buyer).approve(await settlement.getAddress(), 0);
+      await send(cashToken.connect(buyer).approve(await settlement.getAddress(), 0));
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -303,13 +310,13 @@ describe("Settlement", function () {
 
   describe("Pause", function () {
     it("should allow operator to pause", async function () {
-      await settlement.pause();
+      await send(settlement.pause());
       expect(await settlement.paused()).to.be.true;
     });
 
     it("should allow operator to unpause", async function () {
-      await settlement.pause();
-      await settlement.unpause();
+      await send(settlement.pause());
+      await send(settlement.unpause());
       expect(await settlement.paused()).to.be.false;
     });
 
@@ -320,14 +327,14 @@ describe("Settlement", function () {
     });
 
     it("should reject unpause from non-operator", async function () {
-      await settlement.pause();
+      await send(settlement.pause());
       await expect(
         settlement.connect(stranger).unpause()
       ).to.be.revertedWith("Settlement: caller is not an operator");
     });
 
     it("should reject settle when paused", async function () {
-      await settlement.pause();
+      await send(settlement.pause());
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -338,24 +345,26 @@ describe("Settlement", function () {
     });
 
     it("should allow settle after unpause", async function () {
-      await settlement.pause();
-      await settlement.unpause();
-      await settlement.settle(
+      await send(settlement.pause());
+      await send(settlement.unpause());
+      await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      );
+      ));
       expect(await securitiesToken.balanceOf(buyer.address)).to.equal(ONE_TOKEN);
     });
   });
 
   describe("Events", function () {
     it("should emit SettlementExecuted on successful settle", async function () {
-      await expect(settlement.settle(
+      const tx = await settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
-      ))
+      );
+      await tx.wait();
+      await expect(tx)
         .to.emit(settlement, "SettlementExecuted")
         .withArgs(
           buyer.address, seller.address,
@@ -365,14 +374,18 @@ describe("Settlement", function () {
     });
 
     it("should emit Paused on pause", async function () {
-      await expect(settlement.pause())
+      const tx = await settlement.pause();
+      await tx.wait();
+      await expect(tx)
         .to.emit(settlement, "Paused")
         .withArgs(deployer.address);
     });
 
     it("should emit Unpaused on unpause", async function () {
-      await settlement.pause();
-      await expect(settlement.unpause())
+      await send(settlement.pause());
+      const tx = await settlement.unpause();
+      await tx.wait();
+      await expect(tx)
         .to.emit(settlement, "Unpaused")
         .withArgs(deployer.address);
     });
