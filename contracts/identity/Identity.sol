@@ -13,9 +13,9 @@ import "../interfaces/IAccessControl.sol";
 contract Identity is IAccessControl {
 
     // --- Roles ---
-    bytes32 public constant TRADER   = keccak256("TRADER");
-    bytes32 public constant ISSUER   = keccak256("ISSUER");
-    bytes32 public constant OPERATOR = keccak256("OPERATOR");
+    bytes32 public constant TRADER    = keccak256("TRADER");
+    bytes32 public constant ISSUER    = keccak256("ISSUER");
+    bytes32 public constant OPERATOR  = keccak256("OPERATOR");
     bytes32 public constant REGULATOR = keccak256("REGULATOR");
 
     // --- State ---
@@ -27,11 +27,18 @@ contract Identity is IAccessControl {
 
     mapping(address => UserRecord) private _users;
     address public admin;
+    address public pendingAdmin;
+
+    // --- Events ---
+    event AdminTransferInitiated(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferAccepted(address indexed newAdmin);
 
     // --- Modifiers ---
     modifier onlyOperator() {
         require(
-            _users[msg.sender].role == OPERATOR && _users[msg.sender].active,
+            _users[msg.sender].role == OPERATOR &&
+            _users[msg.sender].active &&
+            block.timestamp <= _users[msg.sender].expiry,
             "Identity: caller is not an operator"
         );
         _;
@@ -64,7 +71,7 @@ contract Identity is IAccessControl {
         _users[user] = UserRecord({
             role: role,
             active: true,
-            expiry: type(uint256).max  // no expiry on whitelist; use updateAttestation to set one
+            expiry: type(uint256).max
         });
         emit UserWhitelisted(user, role);
     }
@@ -72,6 +79,7 @@ contract Identity is IAccessControl {
     function revoke(address user) external override onlyOperator {
         require(_users[user].active, "Identity: user not active");
         _users[user].active = false;
+        _users[user].role = bytes32(0);
         emit UserRevoked(user);
     }
 
@@ -81,7 +89,11 @@ contract Identity is IAccessControl {
     }
 
     function getRole(address user) external view override returns (bytes32) {
-        return _users[user].role;
+        UserRecord memory r = _users[user];
+        if (!r.active || block.timestamp > r.expiry) {
+            return bytes32(0);
+        }
+        return r.role;
     }
 
     function isExpired(address user) external view override returns (bool) {
@@ -93,5 +105,20 @@ contract Identity is IAccessControl {
         require(newExpiry > block.timestamp, "Identity: expiry must be in future");
         _users[user].expiry = newExpiry;
         emit AttestationUpdated(user, newExpiry);
+    }
+
+    // --- Admin Transfer ---
+
+    function initiateAdminTransfer(address newAdmin) external onlyAdmin {
+        require(newAdmin != address(0), "Identity: zero address");
+        pendingAdmin = newAdmin;
+        emit AdminTransferInitiated(admin, newAdmin);
+    }
+
+    function acceptAdminTransfer() external {
+        require(msg.sender == pendingAdmin, "Identity: caller is not pending admin");
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferAccepted(admin);
     }
 }

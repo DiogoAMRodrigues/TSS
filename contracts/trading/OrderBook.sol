@@ -23,16 +23,32 @@ contract OrderBook is IMatchingEngine {
 
     mapping(uint256 => Order) private _orders;
     mapping(uint256 => Match) private _matches;
+
+    // Open order ID tracking for O(1) match scanning
+    uint256[] private _openOrderIds;
+    mapping(uint256 => uint256) private _openOrderIndex;
+
     uint256[] private _pendingMatchIds;
 
     IAccessControl private _identity;
     IRegistry private _registry;
     IDvPTrigger private _settlement;
 
+    bool public paused;
+
     // --- Roles ---
     bytes32 public constant OPERATOR = keccak256("OPERATOR");
 
+    // --- Events ---
+    event Paused(address operator);
+    event Unpaused(address operator);
+
     // --- Modifiers ---
+    modifier whenNotPaused() {
+        require(!paused, "OrderBook: contract is paused");
+        _;
+    }
+
     modifier onlyWhitelisted() {
         require(_identity.isWhitelisted(msg.sender), "OrderBook: caller not whitelisted");
         _;
@@ -40,6 +56,7 @@ contract OrderBook is IMatchingEngine {
 
     modifier onlyOperator() {
         require(
+            _identity.isWhitelisted(msg.sender) &&
             _identity.getRole(msg.sender) == OPERATOR,
             "OrderBook: caller is not an operator"
         );
@@ -64,7 +81,7 @@ contract OrderBook is IMatchingEngine {
         address tokenOut,
         uint256 amountIn,
         uint256 amountOut
-    ) external override onlyWhitelisted returns (uint256 orderId) {
+    ) external override whenNotPaused onlyWhitelisted returns (uint256 orderId) {
         require(tokenIn != tokenOut, "OrderBook: tokenIn and tokenOut must differ");
         require(_registry.isActive(tokenIn), "OrderBook: tokenIn not registered");
         require(_registry.isActive(tokenOut), "OrderBook: tokenOut not registered");
@@ -84,6 +101,10 @@ contract OrderBook is IMatchingEngine {
             status: OrderStatus.OPEN
         });
 
+        // Track as open for efficient matching
+        _openOrderIndex[orderId] = _openOrderIds.length;
+        _openOrderIds.push(orderId);
+
         emit OrderSubmitted(orderId, msg.sender, tokenIn, tokenOut, amountIn, amountOut);
 
         // Attempt to match after submission
@@ -92,11 +113,17 @@ contract OrderBook is IMatchingEngine {
         return orderId;
     }
 
-    function cancelOrder(uint256 orderId) external override {
+    function cancelOrder(uint256 orderId) external override whenNotPaused {
         Order storage order = _orders[orderId];
-        require(order.trader == msg.sender || _identity.getRole(msg.sender) == OPERATOR, "OrderBook: not authorized");
+        require(order.trader != address(0), "OrderBook: order does not exist");
+        require(
+            order.trader == msg.sender ||
+            (_identity.isWhitelisted(msg.sender) && _identity.getRole(msg.sender) == OPERATOR),
+            "OrderBook: not authorized"
+        );
         require(order.status == OrderStatus.OPEN, "OrderBook: order not open");
         order.status = OrderStatus.CANCELLED;
+        _removeFromOpenOrders(orderId);
         emit OrderCancelled(orderId, msg.sender);
     }
 
@@ -116,29 +143,40 @@ contract OrderBook is IMatchingEngine {
         return pending;
     }
 
+    // --- Emergency controls ---
+    function pause() external onlyOperator {
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    function unpause() external onlyOperator {
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+
     // --- Internal Matching Logic ---
 
     function _tryMatch(uint256 newOrderId) internal {
         Order storage newOrder = _orders[newOrderId];
 
-        // Look for a compatible open order
-        for (uint256 i = 1; i <= _orderCounter; i++) {
-            if (i == newOrderId) continue;
+        // Iterate only over open orders — O(open) not O(all)
+        for (uint256 i = 0; i < _openOrderIds.length; i++) {
+            uint256 candidateId = _openOrderIds[i];
 
-            Order storage candidate = _orders[i];
+            if (candidateId == newOrderId) continue;
 
-            if (candidate.status != OrderStatus.OPEN) continue;
+            Order storage candidate = _orders[candidateId];
 
-            // Check if orders are compatible:
-            // newOrder wants to sell tokenIn for tokenOut
-            // candidate wants to sell tokenOut for tokenIn
-            // Price-time priority: accept if prices cross
+            // Re-check whitelisting for both parties at match time
+            if (!_identity.isWhitelisted(newOrder.trader)) return;
+            if (!_identity.isWhitelisted(candidate.trader)) continue;
+
             if (
                 candidate.tokenIn == newOrder.tokenOut &&
                 candidate.tokenOut == newOrder.tokenIn &&
                 _pricesCross(newOrder, candidate)
             ) {
-                _executeMatch(newOrderId, i);
+                _executeMatch(newOrderId, candidateId);
                 return;
             }
         }
@@ -158,8 +196,20 @@ contract OrderBook is IMatchingEngine {
         order1.status = OrderStatus.MATCHED;
         order2.status = OrderStatus.MATCHED;
 
+        _removeFromOpenOrders(orderId1);
+        _removeFromOpenOrders(orderId2);
+
         _matchCounter++;
         uint256 matchId = _matchCounter;
+
+        // TODO: price improvement — currently uses aggressor (order1) amounts
+        // unconditionally. Decide whose price wins when orders cross:
+        // option A) resting order price (order2.amountIn / order2.amountOut)
+        // option B) aggressor price (order1 amounts, current behaviour)
+        // option C) midpoint price
+        // Update securitiesAmount and cashAmount accordingly once decided.
+        uint256 securitiesAmount = order1.amountOut;
+        uint256 cashAmount       = order1.amountIn;
 
         _matches[matchId] = Match({
             matchId: matchId,
@@ -177,13 +227,26 @@ contract OrderBook is IMatchingEngine {
         emit OrderMatched(matchId, orderId1, orderId2);
 
         // Trigger DvP settlement
-       _settlement.settle(
-            order1.trader,   // buyer
-            order2.trader,   // seller
-            order1.tokenOut, // securitiesToken (what buyer wants)
-            order1.tokenIn,  // cashToken (what buyer is giving)
-            order1.amountOut, // securitiesAmount
-            order1.amountIn   // cashAmount
+        _settlement.settle(
+            order1.trader,    // buyer
+            order2.trader,    // seller
+            order1.tokenOut,  // securitiesToken (what buyer wants)
+            order1.tokenIn,   // cashToken (what buyer is giving)
+            securitiesAmount,
+            cashAmount
         );
+    }
+
+    // --- Internal Helpers ---
+
+    function _removeFromOpenOrders(uint256 orderId) internal {
+        uint256 idx = _openOrderIndex[orderId];
+        uint256 lastId = _openOrderIds[_openOrderIds.length - 1];
+
+        _openOrderIds[idx] = lastId;
+        _openOrderIndex[lastId] = idx;
+
+        _openOrderIds.pop();
+        delete _openOrderIndex[orderId];
     }
 }

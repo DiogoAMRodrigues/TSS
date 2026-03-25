@@ -23,6 +23,7 @@ contract CashToken is ITokenTransfer {
     mapping(address => mapping(address => uint256)) private _allowances;
 
     bool public paused;
+    address public identityContract;
 
     IAccessControl private _identity;
 
@@ -56,8 +57,10 @@ contract CashToken is ITokenTransfer {
 
     // --- Constructor ---
     constructor(string memory _name, string memory _symbol, address _identityContract) {
+        require(_identityContract != address(0), "CashToken: zero identity address");
         name = _name;
         symbol = _symbol;
+        identityContract = _identityContract;
         _identity = IAccessControl(_identityContract);
     }
 
@@ -83,18 +86,19 @@ contract CashToken is ITokenTransfer {
     {
         require(_allowances[from][msg.sender] >= amount, "CashToken: insufficient allowance");
         _allowances[from][msg.sender] -= amount;
+        emit Approval(from, msg.sender, _allowances[from][msg.sender]);
         _transfer(from, to, amount);
         return true;
     }
 
-    function mint(address to, uint256 amount) external override onlyOperator {
+    function mint(address to, uint256 amount) external override whenNotPaused onlyOperator {
         require(_identity.isWhitelisted(to), "CashToken: recipient not whitelisted");
         _totalSupply += amount;
         _balances[to] += amount;
         emit TokensMinted(to, amount);
     }
 
-    function burn(address from, uint256 amount) external override onlyOperator {
+    function burn(address from, uint256 amount) external override whenNotPaused onlyOperator {
         require(_balances[from] >= amount, "CashToken: insufficient balance");
         _balances[from] -= amount;
         _totalSupply -= amount;
@@ -121,6 +125,7 @@ contract CashToken is ITokenTransfer {
 
     // --- ERC-20 Approval ---
     function approve(address spender, uint256 amount) external returns (bool) {
+        require(spender != address(0), "CashToken: approve to zero address");
         _allowances[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
         return true;

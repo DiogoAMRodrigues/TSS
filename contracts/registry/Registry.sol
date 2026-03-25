@@ -25,6 +25,7 @@ contract Registry is IRegistry {
     // --- Modifiers ---
     modifier onlyOperator() {
         require(
+            _identity.isWhitelisted(msg.sender) &&
             _identity.getRole(msg.sender) == OPERATOR,
             "Registry: caller is not an operator"
         );
@@ -44,7 +45,8 @@ contract Registry is IRegistry {
         address issuer
     ) external override onlyOperator {
         require(tokenAddress != address(0), "Registry: zero address");
-        require( _assets[tokenAddress].registeredAt == 0, "Registry: asset already registered" );
+        require(issuer != address(0), "Registry: zero issuer address");
+        require(_assets[tokenAddress].registeredAt == 0, "Registry: asset already registered");
 
         _assets[tokenAddress] = Asset({
             tokenAddress: tokenAddress,

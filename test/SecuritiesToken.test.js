@@ -1,3 +1,4 @@
+// SecuritiesToken.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -71,6 +72,13 @@ describe("SecuritiesToken", function () {
     it("should return zero allowance for any pair initially", async function () {
       expect(await securitiesToken.allowance(trader1.address, trader2.address)).to.equal(0);
     });
+
+    it("should reject deployment with zero identity address", async function () {
+      const SecuritiesToken = await ethers.getContractFactory("SecuritiesToken");
+      await expect(
+        SecuritiesToken.deploy("TestSecurity", "TSC", ethers.ZeroAddress)
+      ).to.be.revertedWith("SecuritiesToken: zero identity address");
+    });
   });
 
   describe("Minting", function () {
@@ -114,6 +122,13 @@ describe("SecuritiesToken", function () {
       await send(securitiesToken.mint(trader2.address, ONE_TOKEN));
       expect(await securitiesToken.totalSupply()).to.equal(TWO_TOKENS);
     });
+
+    it("should reject mint when paused", async function () {
+      await send(securitiesToken.pause());
+      await expect(
+        securitiesToken.mint(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("SecuritiesToken: contract is paused");
+    });
   });
 
   describe("Burning", function () {
@@ -155,6 +170,14 @@ describe("SecuritiesToken", function () {
       await expect(
         securitiesToken.burn(trader1.address, ONE_TOKEN)
       ).to.be.revertedWith("SecuritiesToken: insufficient balance");
+    });
+
+    it("should reject burn when paused", async function () {
+      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
+      await send(securitiesToken.pause());
+      await expect(
+        securitiesToken.burn(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("SecuritiesToken: contract is paused");
     });
   });
 
@@ -251,6 +274,14 @@ describe("SecuritiesToken", function () {
       await send(securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN));
       expect(await securitiesToken.allowance(trader1.address, deployer.address)).to.equal(0);
     });
+
+    it("should emit Approval event with updated allowance after transferFrom", async function () {
+      const tx = await securitiesToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
+        .to.emit(securitiesToken, "Approval")
+        .withArgs(trader1.address, deployer.address, 0);
+    });
   });
 
   describe("Approval", function () {
@@ -274,6 +305,12 @@ describe("SecuritiesToken", function () {
     it("should allow approving non-whitelisted spender", async function () {
       await send(securitiesToken.connect(trader1).approve(stranger.address, ONE_TOKEN));
       expect(await securitiesToken.allowance(trader1.address, stranger.address)).to.equal(ONE_TOKEN);
+    });
+
+    it("should reject approve to zero address", async function () {
+      await expect(
+        securitiesToken.connect(trader1).approve(ethers.ZeroAddress, ONE_TOKEN)
+      ).to.be.revertedWith("SecuritiesToken: approve to zero address");
     });
   });
 
@@ -327,17 +364,19 @@ describe("SecuritiesToken", function () {
       expect(await securitiesToken.balanceOf(trader2.address)).to.equal(ONE_TOKEN);
     });
 
-    it("should allow mint when paused", async function () {
+    it("should reject mint when paused", async function () {
       await send(securitiesToken.pause());
-      await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
-      expect(await securitiesToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
+      await expect(
+        securitiesToken.mint(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("SecuritiesToken: contract is paused");
     });
 
-    it("should allow burn when paused", async function () {
+    it("should reject burn when paused", async function () {
       await send(securitiesToken.mint(trader1.address, ONE_TOKEN));
       await send(securitiesToken.pause());
-      await send(securitiesToken.burn(trader1.address, ONE_TOKEN));
-      expect(await securitiesToken.balanceOf(trader1.address)).to.equal(0);
+      await expect(
+        securitiesToken.burn(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("SecuritiesToken: contract is paused");
     });
   });
 

@@ -68,6 +68,7 @@ contract SecuritiesToken is ITokenTransfer {
 
     // --- Constructor ---
     constructor(string memory _name, string memory _symbol, address _identityContract) {
+        require(_identityContract != address(0), "SecuritiesToken: zero identity address");
         name = _name;
         symbol = _symbol;
         identityContract = _identityContract;
@@ -76,12 +77,12 @@ contract SecuritiesToken is ITokenTransfer {
 
     // --- ITokenTransfer Implementation ---
 
-    function transfer(address to, uint256 amount) 
-        external 
-        override 
-        whenNotPaused 
-        onlyWhitelisted(msg.sender, to) 
-        returns (bool) 
+    function transfer(address to, uint256 amount)
+        external
+        override
+        whenNotPaused
+        onlyWhitelisted(msg.sender, to)
+        returns (bool)
     {
         _transfer(msg.sender, to, amount);
         return true;
@@ -96,18 +97,19 @@ contract SecuritiesToken is ITokenTransfer {
     {
         require(_allowances[from][msg.sender] >= amount, "SecuritiesToken: insufficient allowance");
         _allowances[from][msg.sender] -= amount;
+        emit Approval(from, msg.sender, _allowances[from][msg.sender]);
         _transfer(from, to, amount);
         return true;
     }
 
-    function mint(address to, uint256 amount) external override onlyIssuerOrOperator {
+    function mint(address to, uint256 amount) external override whenNotPaused onlyIssuerOrOperator {
         require(_identity.isWhitelisted(to), "SecuritiesToken: recipient not whitelisted");
         _totalSupply += amount;
         _balances[to] += amount;
         emit TokensMinted(to, amount);
     }
 
-    function burn(address from, uint256 amount) external override onlyOperator {
+    function burn(address from, uint256 amount) external override whenNotPaused onlyOperator {
         require(_balances[from] >= amount, "SecuritiesToken: insufficient balance");
         _balances[from] -= amount;
         _totalSupply -= amount;
@@ -134,6 +136,7 @@ contract SecuritiesToken is ITokenTransfer {
 
     // --- ERC-20 Approval ---
     function approve(address spender, uint256 amount) external returns (bool) {
+        require(spender != address(0), "SecuritiesToken: approve to zero address");
         _allowances[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
         return true;

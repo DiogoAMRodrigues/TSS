@@ -1,14 +1,17 @@
+// Registry.test.js
 const { expect } = require("chai");
 const { ethers, network } = require("hardhat");
 
 describe("Registry", function () {
   let identity, registry;
-  let deployer, issuer, stranger, addr1, addr2;
+  let deployer, issuer, operator2, stranger, addr1, addr2;
 
   const ISSUER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ISSUER"));
   const OPERATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("OPERATOR"));
   const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
   const ERC1155_TYPE = ethers.encodeBytes32String("ERC1155");
+  const CASH_TOKEN_TYPE = ethers.encodeBytes32String("CASH_TOKEN");
+  const SECURITIES_TYPE = ethers.encodeBytes32String("SECURITIES");
 
   async function send(txPromise) {
     const tx = await txPromise;
@@ -16,8 +19,17 @@ describe("Registry", function () {
     return tx;
   }
 
+  async function waitForExpiry() {
+    if (network.name === "besu") {
+      await new Promise(r => setTimeout(r, 12000));
+    } else {
+      await ethers.provider.send("evm_increaseTime", [20]);
+      await ethers.provider.send("evm_mine");
+    }
+  }
+
   beforeEach(async function () {
-    [deployer, issuer, stranger, addr1, addr2] = await ethers.getSigners();
+    [deployer, issuer, operator2, stranger, addr1, addr2] = await ethers.getSigners();
 
     const Identity = await ethers.getContractFactory("Identity");
     identity = await Identity.deploy();
@@ -60,9 +72,19 @@ describe("Registry", function () {
       expect((await registry.getAsset(addr2.address)).assetType).to.equal(ERC1155_TYPE);
     });
 
-    it("should allow registering asset with zero address issuer", async function () {
-      await send(registry.registerAsset(addr1.address, ERC20_TYPE, ethers.ZeroAddress));
-      expect(await registry.isRegistered(addr1.address)).to.be.true;
+    it("should distinguish cash token type from securities type", async function () {
+      await send(registry.registerAsset(addr1.address, CASH_TOKEN_TYPE, issuer.address));
+      await send(registry.registerAsset(addr2.address, SECURITIES_TYPE, issuer.address));
+      expect((await registry.getAsset(addr1.address)).assetType).to.equal(CASH_TOKEN_TYPE);
+      expect((await registry.getAsset(addr2.address)).assetType).to.equal(SECURITIES_TYPE);
+      expect((await registry.getAsset(addr1.address)).assetType).to.not.equal(SECURITIES_TYPE);
+      expect((await registry.getAsset(addr2.address)).assetType).to.not.equal(CASH_TOKEN_TYPE);
+    });
+
+    it("should reject registering asset with zero address issuer", async function () {
+      await expect(
+        registry.registerAsset(addr1.address, ERC20_TYPE, ethers.ZeroAddress)
+      ).to.be.revertedWith("Registry: zero issuer address");
     });
 
     it("should reject registration from non-operator", async function () {
@@ -104,6 +126,24 @@ describe("Registry", function () {
       expect(assets).to.include(addr1.address);
       expect(assets).to.include(addr2.address);
     });
+
+    it("should reject registration from revoked operator", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
+      await expect(
+        registry.connect(operator2).registerAsset(addr1.address, ERC20_TYPE, issuer.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
+
+    it("should reject registration from expired operator", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
+      await waitForExpiry();
+      await expect(
+        registry.connect(operator2).registerAsset(addr1.address, ERC20_TYPE, issuer.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
   });
 
   describe("Asset Deactivation", function () {
@@ -140,6 +180,26 @@ describe("Registry", function () {
       await expect(
         registry.deactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: asset not active");
+    });
+
+    it("should reject deactivation from revoked operator", async function () {
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
+      await expect(
+        registry.connect(operator2).deactivateAsset(addr1.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
+
+    it("should reject deactivation from expired operator", async function () {
+      await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
+      await waitForExpiry();
+      await expect(
+        registry.connect(operator2).deactivateAsset(addr1.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
     });
   });
 

@@ -25,3 +25,5 @@ cache/
 npm-debug.log*
 
 genesis.json
+
+docker-compose.yml

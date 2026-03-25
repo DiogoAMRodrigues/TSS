@@ -1,8 +1,9 @@
+// Settlement.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("Settlement", function () {
-  let identity, registry, settlement, securitiesToken, cashToken;
+  let identity, registry, settlement, orderBook, securitiesToken, cashToken;
   let deployer, buyer, seller, stranger;
 
   const TRADER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TRADER"));
@@ -10,7 +11,6 @@ describe("Settlement", function () {
   const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
   const ONE_TOKEN = ethers.parseEther("1");
 
-  // Helper for Besu tx.wait()
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
@@ -37,6 +37,19 @@ describe("Settlement", function () {
       await registry.getAddress()
     );
     await settlement.waitForDeployment();
+
+    const OrderBook = await ethers.getContractFactory("OrderBook");
+    orderBook = await OrderBook.deploy(
+      await identity.getAddress(),
+      await registry.getAddress(),
+      await settlement.getAddress()
+    );
+    await orderBook.waitForDeployment();
+
+    // Authorize deployer directly for Settlement.test.js direct-call tests
+    await send(settlement.authorizeEngine(deployer.address));
+    // Authorize orderBook for matching tests
+    await send(settlement.authorizeEngine(await orderBook.getAddress()));
 
     const SecuritiesToken = await ethers.getContractFactory("SecuritiesToken");
     securitiesToken = await SecuritiesToken.deploy(
@@ -70,6 +83,61 @@ describe("Settlement", function () {
     });
   });
 
+  describe("Engine Authorization", function () {
+    it("should allow operator to authorize an engine", async function () {
+      expect(await settlement.isAuthorizedEngine(await orderBook.getAddress())).to.be.true;
+    });
+
+    it("should allow operator to revoke an engine", async function () {
+      await send(settlement.revokeEngine(await orderBook.getAddress()));
+      expect(await settlement.isAuthorizedEngine(await orderBook.getAddress())).to.be.false;
+    });
+
+    it("should reject settle from unauthorized address", async function () {
+      await expect(
+        settlement.connect(stranger).settle(
+          buyer.address, seller.address,
+          await securitiesToken.getAddress(), await cashToken.getAddress(),
+          ONE_TOKEN, ONE_TOKEN
+        )
+      ).to.be.revertedWith("Settlement: caller is not an authorized engine");
+    });
+
+    it("should reject settle from trader even if whitelisted", async function () {
+      await expect(
+        settlement.connect(buyer).settle(
+          buyer.address, seller.address,
+          await securitiesToken.getAddress(), await cashToken.getAddress(),
+          ONE_TOKEN, ONE_TOKEN
+        )
+      ).to.be.revertedWith("Settlement: caller is not an authorized engine");
+    });
+
+    it("should reject authorizeEngine from non-operator", async function () {
+      await expect(
+        settlement.connect(stranger).authorizeEngine(stranger.address)
+      ).to.be.revertedWith("Settlement: caller is not an operator");
+    });
+
+    it("should reject revokeEngine from non-operator", async function () {
+      await expect(
+        settlement.connect(stranger).revokeEngine(await orderBook.getAddress())
+      ).to.be.revertedWith("Settlement: caller is not an operator");
+    });
+
+    it("should reject revokeEngine on non-authorized address", async function () {
+      await expect(
+        settlement.revokeEngine(stranger.address)
+      ).to.be.revertedWith("Settlement: engine not authorized");
+    });
+
+    it("should reject authorizeEngine with zero address", async function () {
+      await expect(
+        settlement.authorizeEngine(ethers.ZeroAddress)
+      ).to.be.revertedWith("Settlement: zero address");
+    });
+  });
+
   describe("Settlement Execution", function () {
     it("should execute atomic DvP successfully", async function () {
       await send(settlement.settle(
@@ -77,7 +145,6 @@ describe("Settlement", function () {
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
       ));
-
       expect(await securitiesToken.balanceOf(buyer.address)).to.equal(ONE_TOKEN);
       expect(await cashToken.balanceOf(seller.address)).to.equal(ONE_TOKEN);
       expect(await securitiesToken.balanceOf(seller.address)).to.equal(0);
@@ -90,7 +157,6 @@ describe("Settlement", function () {
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
       ));
-
       const record = await settlement.getSettlement(1);
       expect(record.buyer).to.equal(buyer.address);
       expect(record.seller).to.equal(seller.address);
@@ -101,16 +167,16 @@ describe("Settlement", function () {
       expect(record.timestamp).to.be.gt(0);
     });
 
-    it("should return empty record for getSettlement(0)", async function () {
-      const record = await settlement.getSettlement(0);
-      expect(record.buyer).to.equal(ethers.ZeroAddress);
-      expect(record.seller).to.equal(ethers.ZeroAddress);
-      expect(record.timestamp).to.equal(0);
+    it("should reject getSettlement(0) as invalid", async function () {
+      await expect(
+        settlement.getSettlement(0)
+      ).to.be.revertedWith("Settlement: invalid settlement ID");
     });
 
-    it("should return empty record for non-existent settlement ID", async function () {
-      const record = await settlement.getSettlement(999);
-      expect(record.buyer).to.equal(ethers.ZeroAddress);
+    it("should reject getSettlement for non-existent settlement ID", async function () {
+      await expect(
+        settlement.getSettlement(999)
+      ).to.be.revertedWith("Settlement: invalid settlement ID");
     });
 
     it("should increment settlement counter correctly", async function () {
@@ -119,18 +185,15 @@ describe("Settlement", function () {
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
       ));
-
       await send(securitiesToken.mint(seller.address, ONE_TOKEN));
       await send(cashToken.mint(buyer.address, ONE_TOKEN));
       await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), ONE_TOKEN));
       await send(cashToken.connect(buyer).approve(await settlement.getAddress(), ONE_TOKEN));
-
       await send(settlement.settle(
         buyer.address, seller.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
       ));
-
       const record2 = await settlement.getSettlement(2);
       expect(record2.buyer).to.equal(buyer.address);
     });
@@ -140,23 +203,19 @@ describe("Settlement", function () {
       await send(cashToken.mint(deployer.address, ONE_TOKEN));
       await send(securitiesToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN));
       await send(cashToken.connect(deployer).approve(await settlement.getAddress(), ONE_TOKEN));
-
       await send(settlement.settle(
         deployer.address, deployer.address,
         await securitiesToken.getAddress(), await cashToken.getAddress(),
         ONE_TOKEN, ONE_TOKEN
       ));
-
       expect(await securitiesToken.balanceOf(deployer.address)).to.equal(ONE_TOKEN);
       expect(await cashToken.balanceOf(deployer.address)).to.equal(ONE_TOKEN);
     });
 
     it("should revert entirely if second transfer fails (atomicity)", async function () {
       await send(cashToken.connect(buyer).approve(await settlement.getAddress(), 0));
-
       const sellerSecuritiesBefore = await securitiesToken.balanceOf(seller.address);
       const buyerCashBefore = await cashToken.balanceOf(buyer.address);
-
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -164,7 +223,6 @@ describe("Settlement", function () {
           ONE_TOKEN, ONE_TOKEN
         )
       ).to.be.revertedWith("CashToken: insufficient allowance");
-
       expect(await securitiesToken.balanceOf(seller.address)).to.equal(sellerSecuritiesBefore);
       expect(await cashToken.balanceOf(buyer.address)).to.equal(buyerCashBefore);
     });
@@ -217,7 +275,6 @@ describe("Settlement", function () {
         "Unregistered", "UNR", await identity.getAddress()
       );
       await unregistered.waitForDeployment();
-
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -233,7 +290,6 @@ describe("Settlement", function () {
         "Unregistered", "UNR", await identity.getAddress()
       );
       await unregistered.waitForDeployment();
-
       await expect(
         settlement.settle(
           buyer.address, seller.address,
@@ -354,6 +410,17 @@ describe("Settlement", function () {
       ));
       expect(await securitiesToken.balanceOf(buyer.address)).to.equal(ONE_TOKEN);
     });
+
+    it("should leave OrderBook orders open when Settlement is paused", async function () {
+      await send(settlement.pause());
+      await expect(
+        orderBook.connect(buyer).submitOrder(
+          await cashToken.getAddress(),
+          await securitiesToken.getAddress(),
+          ONE_TOKEN, ONE_TOKEN
+        )
+      ).to.be.revertedWith("Settlement: contract is paused");
+    });
   });
 
   describe("Events", function () {
@@ -376,18 +443,28 @@ describe("Settlement", function () {
     it("should emit Paused on pause", async function () {
       const tx = await settlement.pause();
       await tx.wait();
-      await expect(tx)
-        .to.emit(settlement, "Paused")
-        .withArgs(deployer.address);
+      await expect(tx).to.emit(settlement, "Paused").withArgs(deployer.address);
     });
 
     it("should emit Unpaused on unpause", async function () {
       await send(settlement.pause());
       const tx = await settlement.unpause();
       await tx.wait();
+      await expect(tx).to.emit(settlement, "Unpaused").withArgs(deployer.address);
+    });
+
+    it("should emit EngineAuthorized on authorizeEngine", async function () {
+      const tx = await settlement.authorizeEngine(stranger.address);
+      await tx.wait();
+      await expect(tx).to.emit(settlement, "EngineAuthorized").withArgs(stranger.address);
+    });
+
+    it("should emit EngineRevoked on revokeEngine", async function () {
+      const tx = await settlement.revokeEngine(await orderBook.getAddress());
+      await tx.wait();
       await expect(tx)
-        .to.emit(settlement, "Unpaused")
-        .withArgs(deployer.address);
+        .to.emit(settlement, "EngineRevoked")
+        .withArgs(await orderBook.getAddress());
     });
   });
 });

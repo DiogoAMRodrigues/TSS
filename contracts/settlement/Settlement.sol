@@ -20,6 +20,7 @@ contract Settlement is IDvPTrigger {
     // --- State ---
     uint256 private _settlementCounter;
     mapping(uint256 => SettlementInfo) private _settlements;
+    mapping(address => bool) private _authorizedEngines;
 
     IAccessControl private _identity;
     IRegistry private _registry;
@@ -32,6 +33,8 @@ contract Settlement is IDvPTrigger {
     // --- Events ---
     event Paused(address operator);
     event Unpaused(address operator);
+    event EngineAuthorized(address engine);
+    event EngineRevoked(address engine);
 
     // --- Modifiers ---
     modifier whenNotPaused() {
@@ -41,9 +44,15 @@ contract Settlement is IDvPTrigger {
 
     modifier onlyOperator() {
         require(
+            _identity.isWhitelisted(msg.sender) &&
             _identity.getRole(msg.sender) == OPERATOR,
             "Settlement: caller is not an operator"
         );
+        _;
+    }
+
+    modifier onlyAuthorizedEngine() {
+        require(_authorizedEngines[msg.sender], "Settlement: caller is not an authorized engine");
         _;
     }
 
@@ -51,6 +60,24 @@ contract Settlement is IDvPTrigger {
     constructor(address identityContract, address registryContract) {
         _identity = IAccessControl(identityContract);
         _registry = IRegistry(registryContract);
+    }
+
+    // --- Engine Authorization ---
+
+    function authorizeEngine(address engine) external onlyOperator {
+        require(engine != address(0), "Settlement: zero address");
+        _authorizedEngines[engine] = true;
+        emit EngineAuthorized(engine);
+    }
+
+    function revokeEngine(address engine) external onlyOperator {
+        require(_authorizedEngines[engine], "Settlement: engine not authorized");
+        _authorizedEngines[engine] = false;
+        emit EngineRevoked(engine);
+    }
+
+    function isAuthorizedEngine(address engine) external view returns (bool) {
+        return _authorizedEngines[engine];
     }
 
     // --- IDvPTrigger Implementation ---
@@ -62,7 +89,7 @@ contract Settlement is IDvPTrigger {
         address cashToken,
         uint256 securitiesAmount,
         uint256 cashAmount
-    ) external override whenNotPaused returns (bool) {
+    ) external override whenNotPaused onlyAuthorizedEngine returns (bool) {
 
         // --- Compliance checks ---
         require(_identity.isWhitelisted(buyer), "Settlement: buyer not whitelisted");
@@ -117,6 +144,7 @@ contract Settlement is IDvPTrigger {
     }
 
     function getSettlement(uint256 settlementId) external view override returns (SettlementInfo memory) {
+        require(settlementId > 0 && settlementId <= _settlementCounter, "Settlement: invalid settlement ID");
         return _settlements[settlementId];
     }
 

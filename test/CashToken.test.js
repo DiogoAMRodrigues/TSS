@@ -1,3 +1,4 @@
+// CashToken.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -10,7 +11,6 @@ describe("CashToken", function () {
   const ONE_TOKEN = ethers.parseEther("1");
   const TWO_TOKENS = ethers.parseEther("2");
 
-  // Helper for Besu tx.wait()
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
@@ -56,6 +56,10 @@ describe("CashToken", function () {
       expect(await cashToken.paused()).to.be.false;
     });
 
+    it("should have correct identity contract address", async function () {
+      expect(await cashToken.identityContract()).to.equal(await identity.getAddress());
+    });
+
     it("should return zero balance for any address initially", async function () {
       expect(await cashToken.balanceOf(trader1.address)).to.equal(0);
       expect(await cashToken.balanceOf(stranger.address)).to.equal(0);
@@ -63,6 +67,13 @@ describe("CashToken", function () {
 
     it("should return zero allowance for any pair initially", async function () {
       expect(await cashToken.allowance(trader1.address, trader2.address)).to.equal(0);
+    });
+
+    it("should reject deployment with zero identity address", async function () {
+      const CashToken = await ethers.getContractFactory("CashToken");
+      await expect(
+        CashToken.deploy("TokenizedEUR", "tEUR", ethers.ZeroAddress)
+      ).to.be.revertedWith("CashToken: zero identity address");
     });
   });
 
@@ -107,6 +118,13 @@ describe("CashToken", function () {
       await send(cashToken.mint(trader2.address, ONE_TOKEN));
       expect(await cashToken.totalSupply()).to.equal(TWO_TOKENS);
     });
+
+    it("should reject mint when paused", async function () {
+      await send(cashToken.pause());
+      await expect(
+        cashToken.mint(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("CashToken: contract is paused");
+    });
   });
 
   describe("Burning", function () {
@@ -148,6 +166,14 @@ describe("CashToken", function () {
       await expect(
         cashToken.burn(trader1.address, ONE_TOKEN)
       ).to.be.revertedWith("CashToken: insufficient balance");
+    });
+
+    it("should reject burn when paused", async function () {
+      await send(cashToken.mint(trader1.address, ONE_TOKEN));
+      await send(cashToken.pause());
+      await expect(
+        cashToken.burn(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("CashToken: contract is paused");
     });
   });
 
@@ -243,6 +269,14 @@ describe("CashToken", function () {
       await send(cashToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN));
       expect(await cashToken.allowance(trader1.address, deployer.address)).to.equal(0);
     });
+
+    it("should emit Approval event with updated allowance after transferFrom", async function () {
+      const tx = await cashToken.transferFrom(trader1.address, trader2.address, ONE_TOKEN);
+      await tx.wait();
+      await expect(tx)
+        .to.emit(cashToken, "Approval")
+        .withArgs(trader1.address, deployer.address, 0);
+    });
   });
 
   describe("Approval", function () {
@@ -266,6 +300,12 @@ describe("CashToken", function () {
     it("should allow approving non-whitelisted spender", async function () {
       await send(cashToken.connect(trader1).approve(stranger.address, ONE_TOKEN));
       expect(await cashToken.allowance(trader1.address, stranger.address)).to.equal(ONE_TOKEN);
+    });
+
+    it("should reject approve to zero address", async function () {
+      await expect(
+        cashToken.connect(trader1).approve(ethers.ZeroAddress, ONE_TOKEN)
+      ).to.be.revertedWith("CashToken: approve to zero address");
     });
   });
 
@@ -319,17 +359,19 @@ describe("CashToken", function () {
       expect(await cashToken.balanceOf(trader2.address)).to.equal(ONE_TOKEN);
     });
 
-    it("should allow mint when paused", async function () {
+    it("should reject mint when paused", async function () {
       await send(cashToken.pause());
-      await send(cashToken.mint(trader1.address, ONE_TOKEN));
-      expect(await cashToken.balanceOf(trader1.address)).to.equal(ONE_TOKEN);
+      await expect(
+        cashToken.mint(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("CashToken: contract is paused");
     });
 
-    it("should allow burn when paused", async function () {
+    it("should reject burn when paused", async function () {
       await send(cashToken.mint(trader1.address, ONE_TOKEN));
       await send(cashToken.pause());
-      await send(cashToken.burn(trader1.address, ONE_TOKEN));
-      expect(await cashToken.balanceOf(trader1.address)).to.equal(0);
+      await expect(
+        cashToken.burn(trader1.address, ONE_TOKEN)
+      ).to.be.revertedWith("CashToken: contract is paused");
     });
   });
 

@@ -1,14 +1,16 @@
+// Identity.test.js
 const { expect } = require("chai");
 const { ethers, network } = require("hardhat");
 
 describe("Identity", function () {
-  let identity;
+  let identity, registry;
   let deployer, trader, operator2, stranger;
 
   const TRADER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TRADER"));
   const OPERATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("OPERATOR"));
   const ISSUER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ISSUER"));
   const REGULATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("REGULATOR"));
+  const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
 
   async function send(txPromise) {
     const tx = await txPromise;
@@ -30,6 +32,10 @@ describe("Identity", function () {
     const Identity = await ethers.getContractFactory("Identity");
     identity = await Identity.deploy();
     await identity.waitForDeployment();
+
+    const Registry = await ethers.getContractFactory("Registry");
+    registry = await Registry.deploy(await identity.getAddress());
+    await registry.waitForDeployment();
   });
 
   describe("Deployment", function () {
@@ -159,6 +165,38 @@ describe("Identity", function () {
         identity.revoke(stranger.address)
       ).to.be.revertedWith("Identity: user not active");
     });
+
+    it("should return zero bytes32 for getRole after revocation", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.revoke(trader.address));
+      expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
+    });
+
+    it("should reset role cleanly when re-whitelisting after revocation", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
+      expect(await identity.getRole(operator2.address)).to.equal(ethers.ZeroHash);
+      await send(identity.whitelist(operator2.address, TRADER_ROLE));
+      expect(await identity.getRole(operator2.address)).to.equal(TRADER_ROLE);
+      expect(await identity.isWhitelisted(operator2.address)).to.be.true;
+    });
+
+    it("should prevent revoked operator from registering assets in Registry", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
+      await expect(
+        registry.connect(operator2).registerAsset(stranger.address, ERC20_TYPE, deployer.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
+
+    it("should prevent revoked operator from deactivating assets in Registry", async function () {
+      await send(registry.registerAsset(stranger.address, ERC20_TYPE, deployer.address));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.revoke(operator2.address));
+      await expect(
+        registry.connect(operator2).deactivateAsset(stranger.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
   });
 
   describe("Attestation", function () {
@@ -205,30 +243,93 @@ describe("Identity", function () {
   describe("Expiry Behavior", function () {
     it("should mark user as not whitelisted after expiry", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
-
       await waitForExpiry();
-
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       expect(await identity.isExpired(trader.address)).to.be.true;
     });
 
     it("should allow re-whitelisting after expiry", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
-
       await waitForExpiry();
-
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
-
       await send(identity.whitelist(trader.address, TRADER_ROLE));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
+    });
+
+    it("should return zero bytes32 for getRole after expiry", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      const nearExpiry = block.timestamp + 10;
+      await send(identity.updateAttestation(trader.address, nearExpiry));
+      await waitForExpiry();
+      expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
+    });
+
+    it("should prevent expired operator from registering assets in Registry", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      const nearExpiry = block.timestamp + 10;
+      await send(identity.updateAttestation(operator2.address, nearExpiry));
+      await waitForExpiry();
+      await expect(
+        registry.connect(operator2).registerAsset(stranger.address, ERC20_TYPE, deployer.address)
+      ).to.be.revertedWith("Registry: caller is not an operator");
+    });
+  });
+
+  describe("Admin Transfer", function () {
+    it("should allow admin to initiate transfer", async function () {
+      await send(identity.initiateAdminTransfer(operator2.address));
+      expect(await identity.pendingAdmin()).to.equal(operator2.address);
+    });
+
+    it("should allow pending admin to accept transfer", async function () {
+      await send(identity.initiateAdminTransfer(operator2.address));
+      await send(identity.connect(operator2).acceptAdminTransfer());
+      expect(await identity.admin()).to.equal(operator2.address);
+      expect(await identity.pendingAdmin()).to.equal(ethers.ZeroAddress);
+    });
+
+    it("should reject initiate from non-admin", async function () {
+      await expect(
+        identity.connect(stranger).initiateAdminTransfer(operator2.address)
+      ).to.be.revertedWith("Identity: caller is not admin");
+    });
+
+    it("should reject initiate with zero address", async function () {
+      await expect(
+        identity.initiateAdminTransfer(ethers.ZeroAddress)
+      ).to.be.revertedWith("Identity: zero address");
+    });
+
+    it("should reject accept from non-pending address", async function () {
+      await send(identity.initiateAdminTransfer(operator2.address));
+      await expect(
+        identity.connect(stranger).acceptAdminTransfer()
+      ).to.be.revertedWith("Identity: caller is not pending admin");
+    });
+
+    it("should emit AdminTransferInitiated on initiate", async function () {
+      const tx = await identity.initiateAdminTransfer(operator2.address);
+      await tx.wait();
+      await expect(tx)
+        .to.emit(identity, "AdminTransferInitiated")
+        .withArgs(deployer.address, operator2.address);
+    });
+
+    it("should emit AdminTransferAccepted on accept", async function () {
+      await send(identity.initiateAdminTransfer(operator2.address));
+      const tx = await identity.connect(operator2).acceptAdminTransfer();
+      await tx.wait();
+      await expect(tx)
+        .to.emit(identity, "AdminTransferAccepted")
+        .withArgs(operator2.address);
     });
   });
 
