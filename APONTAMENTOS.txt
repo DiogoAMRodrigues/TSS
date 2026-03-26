@@ -1,1 +1,0 @@
-ibftConfigFile.json -> "ibft2": {"blockperiodseconds": 2} if you lower from 2 to 1 it'll all be faster
