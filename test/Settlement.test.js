@@ -413,10 +413,15 @@ describe("Settlement", function () {
 
     it("should leave OrderBook orders open when Settlement is paused", async function () {
       await send(settlement.pause());
+      await send(orderBook.connect(buyer).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      ));
       await expect(
-        orderBook.connect(buyer).submitOrder(
-          await cashToken.getAddress(),
+        orderBook.connect(seller).submitOrder(
           await securitiesToken.getAddress(),
+          await cashToken.getAddress(),
           ONE_TOKEN, ONE_TOKEN
         )
       ).to.be.revertedWith("Settlement: contract is paused");

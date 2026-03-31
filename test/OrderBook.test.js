@@ -434,8 +434,8 @@ describe("OrderBook", function () {
       ));
       const match = await orderBook.getMatch(1);
       expect(match.matchId).to.equal(1);
-      expect(match.buyer).to.equal(buyer.address);
-      expect(match.seller).to.equal(seller.address);
+      expect(match.buyer).to.equal(seller.address);
+      expect(match.seller).to.equal(buyer.address);
     });
 
     it("should not match orders with incompatible tokens", async function () {

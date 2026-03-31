@@ -4,7 +4,7 @@ const { ethers, network } = require("hardhat");
 
 describe("Registry", function () {
   let identity, registry;
-  let deployer, issuer, operator2, stranger, addr1, addr2;
+  let deployer, issuer, operator2, stranger, addr1;
 
   const ISSUER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ISSUER"));
   const OPERATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("OPERATOR"));
@@ -29,7 +29,7 @@ describe("Registry", function () {
   }
 
   beforeEach(async function () {
-    [deployer, issuer, operator2, stranger, addr1, addr2] = await ethers.getSigners();
+    [deployer, issuer, operator2, stranger, addr1] = await ethers.getSigners();
 
     const Identity = await ethers.getContractFactory("Identity");
     identity = await Identity.deploy();
@@ -67,18 +67,18 @@ describe("Registry", function () {
 
     it("should support different asset types", async function () {
       await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
-      await send(registry.registerAsset(addr2.address, ERC1155_TYPE, issuer.address));
+      await send(registry.registerAsset(operator2.address, ERC1155_TYPE, issuer.address));
       expect((await registry.getAsset(addr1.address)).assetType).to.equal(ERC20_TYPE);
-      expect((await registry.getAsset(addr2.address)).assetType).to.equal(ERC1155_TYPE);
+      expect((await registry.getAsset(operator2.address)).assetType).to.equal(ERC1155_TYPE);
     });
 
     it("should distinguish cash token type from securities type", async function () {
       await send(registry.registerAsset(addr1.address, CASH_TOKEN_TYPE, issuer.address));
-      await send(registry.registerAsset(addr2.address, SECURITIES_TYPE, issuer.address));
+      await send(registry.registerAsset(operator2.address, SECURITIES_TYPE, issuer.address));
       expect((await registry.getAsset(addr1.address)).assetType).to.equal(CASH_TOKEN_TYPE);
-      expect((await registry.getAsset(addr2.address)).assetType).to.equal(SECURITIES_TYPE);
+      expect((await registry.getAsset(operator2.address)).assetType).to.equal(SECURITIES_TYPE);
       expect((await registry.getAsset(addr1.address)).assetType).to.not.equal(SECURITIES_TYPE);
-      expect((await registry.getAsset(addr2.address)).assetType).to.not.equal(CASH_TOKEN_TYPE);
+      expect((await registry.getAsset(operator2.address)).assetType).to.not.equal(CASH_TOKEN_TYPE);
     });
 
     it("should reject registering asset with zero address issuer", async function () {
@@ -120,11 +120,11 @@ describe("Registry", function () {
 
     it("should track multiple registered assets", async function () {
       await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
-      await send(registry.registerAsset(addr2.address, ERC20_TYPE, issuer.address));
+      await send(registry.registerAsset(operator2.address, ERC20_TYPE, issuer.address));
       const assets = await registry.getAllAssets();
       expect(assets.length).to.equal(2);
       expect(assets).to.include(addr1.address);
-      expect(assets).to.include(addr2.address);
+      expect(assets).to.include(operator2.address);
     });
 
     it("should reject registration from revoked operator", async function () {
