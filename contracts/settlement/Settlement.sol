@@ -58,6 +58,8 @@ contract Settlement is IDvPTrigger {
 
     // --- Constructor ---
     constructor(address identityContract, address registryContract) {
+        require(identityContract != address(0), "Settlement: zero identity address");
+        require(registryContract != address(0), "Settlement: zero registry address");
         _identity = IAccessControl(identityContract);
         _registry = IRegistry(registryContract);
     }

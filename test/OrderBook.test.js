@@ -8,7 +8,8 @@ describe("OrderBook", function () {
 
   const TRADER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TRADER"));
   const OPERATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("OPERATOR"));
-  const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
+  const CASH_TOKEN_TYPE = ethers.encodeBytes32String("CASH_TOKEN");
+  const SECURITIES_TYPE = ethers.encodeBytes32String("SECURITIES");
   const ONE_TOKEN = ethers.parseEther("1");
   const TWO_TOKENS = ethers.parseEther("2");
 
@@ -61,8 +62,8 @@ describe("OrderBook", function () {
     );
     await cashToken.waitForDeployment();
 
-    await send(registry.registerAsset(await securitiesToken.getAddress(), ERC20_TYPE, deployer.address));
-    await send(registry.registerAsset(await cashToken.getAddress(), ERC20_TYPE, deployer.address));
+    await send(registry.registerAsset(await securitiesToken.getAddress(), SECURITIES_TYPE, deployer.address));
+    await send(registry.registerAsset(await cashToken.getAddress(), CASH_TOKEN_TYPE, deployer.address));
 
     await send(securitiesToken.mint(seller.address, ONE_TOKEN));
     await send(cashToken.mint(buyer.address, ONE_TOKEN));
@@ -78,6 +79,39 @@ describe("OrderBook", function () {
 
     it("should not be paused on deployment", async function () {
       expect(await orderBook.paused()).to.be.false;
+    });
+
+    it("should reject deployment with zero identity address", async function () {
+      const OrderBook = await ethers.getContractFactory("OrderBook");
+      await expect(
+        OrderBook.deploy(
+          ethers.ZeroAddress,
+          await registry.getAddress(),
+          await settlement.getAddress()
+        )
+      ).to.be.revertedWith("OrderBook: zero identity address");
+    });
+
+    it("should reject deployment with zero registry address", async function () {
+      const OrderBook = await ethers.getContractFactory("OrderBook");
+      await expect(
+        OrderBook.deploy(
+          await identity.getAddress(),
+          ethers.ZeroAddress,
+          await settlement.getAddress()
+        )
+      ).to.be.revertedWith("OrderBook: zero registry address");
+    });
+
+    it("should reject deployment with zero settlement address", async function () {
+      const OrderBook = await ethers.getContractFactory("OrderBook");
+      await expect(
+        OrderBook.deploy(
+          await identity.getAddress(),
+          await registry.getAddress(),
+          ethers.ZeroAddress
+        )
+      ).to.be.revertedWith("OrderBook: zero settlement address");
     });
   });
 
@@ -434,8 +468,32 @@ describe("OrderBook", function () {
       ));
       const match = await orderBook.getMatch(1);
       expect(match.matchId).to.equal(1);
-      expect(match.buyer).to.equal(seller.address);
-      expect(match.seller).to.equal(buyer.address);
+      expect(match.buyer).to.equal(buyer.address);
+      expect(match.seller).to.equal(seller.address);
+      expect(match.buyOrderId).to.equal(1);
+      expect(match.sellOrderId).to.equal(2);
+    });
+
+    it("should not self-match orders from the same trader", async function () {
+      await send(cashToken.mint(buyer.address, ONE_TOKEN));
+      await send(securitiesToken.mint(buyer.address, ONE_TOKEN));
+      await send(cashToken.connect(buyer).approve(await settlement.getAddress(), TWO_TOKENS));
+      await send(securitiesToken.connect(buyer).approve(await settlement.getAddress(), TWO_TOKENS));
+
+      await send(orderBook.connect(buyer).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      ));
+
+      await send(orderBook.connect(buyer).submitOrder(
+        await securitiesToken.getAddress(),
+        await cashToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      ));
+
+      expect((await orderBook.getOrder(1)).status).to.equal(0);
+      expect((await orderBook.getOrder(2)).status).to.equal(0);
     });
 
     it("should not match orders with incompatible tokens", async function () {
@@ -545,6 +603,41 @@ describe("OrderBook", function () {
           ONE_TOKEN, ONE_TOKEN
         )
       ).to.be.revertedWith("SecuritiesToken: insufficient balance");
+    });
+
+    it("should revert on price-cross multiplication overflow", async function () {
+      const huge = ethers.MaxUint256;
+
+      await send(orderBook.connect(buyer).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        huge, 1
+      ));
+
+      await expect(
+        orderBook.connect(seller).submitOrder(
+          await securitiesToken.getAddress(),
+          await cashToken.getAddress(),
+          huge, 1
+        )
+      ).to.be.revertedWithPanic(0x11);
+    });
+
+    it("should keep pending matches empty after immediate settlement", async function () {
+      await send(orderBook.connect(buyer).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      ));
+
+      await send(orderBook.connect(seller).submitOrder(
+        await securitiesToken.getAddress(),
+        await cashToken.getAddress(),
+        ONE_TOKEN, ONE_TOKEN
+      ));
+
+      const pending = await orderBook.getPendingMatches();
+      expect(pending.length).to.equal(0);
     });
   });
 

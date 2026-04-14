@@ -46,6 +46,13 @@ describe("Registry", function () {
     it("should have correct OPERATOR role constant", async function () {
       expect(await registry.OPERATOR()).to.equal(OPERATOR_ROLE);
     });
+
+    it("should reject deployment with zero identity address", async function () {
+      const Registry = await ethers.getContractFactory("Registry");
+      await expect(
+        Registry.deploy(ethers.ZeroAddress)
+      ).to.be.revertedWith("Registry: zero identity address");
+    });
   });
 
   describe("Asset Registration", function () {

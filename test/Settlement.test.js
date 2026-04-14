@@ -81,10 +81,29 @@ describe("Settlement", function () {
     it("should have correct OPERATOR constant", async function () {
       expect(await settlement.OPERATOR()).to.equal(OPERATOR_ROLE);
     });
+
+    it("should reject deployment with zero identity address", async function () {
+      const Settlement = await ethers.getContractFactory("Settlement");
+      await expect(
+        Settlement.deploy(ethers.ZeroAddress, await registry.getAddress())
+      ).to.be.revertedWith("Settlement: zero identity address");
+    });
+
+    it("should reject deployment with zero registry address", async function () {
+      const Settlement = await ethers.getContractFactory("Settlement");
+      await expect(
+        Settlement.deploy(await identity.getAddress(), ethers.ZeroAddress)
+      ).to.be.revertedWith("Settlement: zero registry address");
+    });
   });
 
   describe("Engine Authorization", function () {
     it("should allow operator to authorize an engine", async function () {
+      expect(await settlement.isAuthorizedEngine(await orderBook.getAddress())).to.be.true;
+    });
+
+    it("should allow authorizing an already authorized engine", async function () {
+      await send(settlement.authorizeEngine(await orderBook.getAddress()));
       expect(await settlement.isAuthorizedEngine(await orderBook.getAddress())).to.be.true;
     });
 
@@ -135,6 +154,14 @@ describe("Settlement", function () {
       await expect(
         settlement.authorizeEngine(ethers.ZeroAddress)
       ).to.be.revertedWith("Settlement: zero address");
+    });
+
+    it("should support authorize-revoke-authorize lifecycle", async function () {
+      const engine = await orderBook.getAddress();
+      await send(settlement.revokeEngine(engine));
+      expect(await settlement.isAuthorizedEngine(engine)).to.be.false;
+      await send(settlement.authorizeEngine(engine));
+      expect(await settlement.isAuthorizedEngine(engine)).to.be.true;
     });
   });
 
@@ -225,6 +252,23 @@ describe("Settlement", function () {
       ).to.be.revertedWith("CashToken: insufficient allowance");
       expect(await securitiesToken.balanceOf(seller.address)).to.equal(sellerSecuritiesBefore);
       expect(await cashToken.balanceOf(buyer.address)).to.equal(buyerCashBefore);
+    });
+
+    it("should revert entirely if first transfer fails (atomicity)", async function () {
+      await send(securitiesToken.connect(seller).approve(await settlement.getAddress(), 0));
+      const buyerSecuritiesBefore = await securitiesToken.balanceOf(buyer.address);
+      const sellerCashBefore = await cashToken.balanceOf(seller.address);
+
+      await expect(
+        settlement.settle(
+          buyer.address, seller.address,
+          await securitiesToken.getAddress(), await cashToken.getAddress(),
+          ONE_TOKEN, ONE_TOKEN
+        )
+      ).to.be.revertedWith("SecuritiesToken: insufficient allowance");
+
+      expect(await securitiesToken.balanceOf(buyer.address)).to.equal(buyerSecuritiesBefore);
+      expect(await cashToken.balanceOf(seller.address)).to.equal(sellerCashBefore);
     });
 
     it("should reject settlement with non-whitelisted buyer", async function () {

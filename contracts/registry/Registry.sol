@@ -34,6 +34,7 @@ contract Registry is IRegistry {
 
     // --- Constructor ---
     constructor(address _identityContract) {
+        require(_identityContract != address(0), "Registry: zero identity address");
         _identity = IAccessControl(_identityContract);
     }
 

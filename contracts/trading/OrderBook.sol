@@ -38,6 +38,8 @@ contract OrderBook is IMatchingEngine {
 
     // --- Roles ---
     bytes32 public constant OPERATOR = keccak256("OPERATOR");
+    bytes32 private constant CASH_TOKEN_TYPE = bytes32("CASH_TOKEN");
+    bytes32 private constant SECURITIES_TYPE = bytes32("SECURITIES");
 
     // --- Events ---
     event Paused(address operator);
@@ -69,6 +71,9 @@ contract OrderBook is IMatchingEngine {
         address registryContract,
         address settlementContract
     ) {
+        require(identityContract != address(0), "OrderBook: zero identity address");
+        require(registryContract != address(0), "OrderBook: zero registry address");
+        require(settlementContract != address(0), "OrderBook: zero settlement address");
         _identity = IAccessControl(identityContract);
         _registry = IRegistry(registryContract);
         _settlement = IDvPTrigger(settlementContract);
@@ -167,6 +172,9 @@ contract OrderBook is IMatchingEngine {
 
             Order storage candidate = _orders[candidateId];
 
+            // Prevent self-trading.
+            if (candidate.trader == newOrder.trader) continue;
+
             // Re-check whitelisting for both parties at match time
             if (!_identity.isWhitelisted(newOrder.trader)) return;
             if (!_identity.isWhitelisted(candidate.trader)) continue;
@@ -193,6 +201,26 @@ contract OrderBook is IMatchingEngine {
         Order storage order1 = _orders[orderId1];
         Order storage order2 = _orders[orderId2];
 
+        Order storage buyOrder = order1;
+        Order storage sellOrder = order2;
+
+        IRegistry.Asset memory a1In = _registry.getAsset(order1.tokenIn);
+        IRegistry.Asset memory a1Out = _registry.getAsset(order1.tokenOut);
+        IRegistry.Asset memory a2In = _registry.getAsset(order2.tokenIn);
+        IRegistry.Asset memory a2Out = _registry.getAsset(order2.tokenOut);
+
+        bool order1LooksLikeBuy =
+            a1In.assetType == CASH_TOKEN_TYPE &&
+            a1Out.assetType == SECURITIES_TYPE;
+        bool order2LooksLikeBuy =
+            a2In.assetType == CASH_TOKEN_TYPE &&
+            a2Out.assetType == SECURITIES_TYPE;
+
+        if (order2LooksLikeBuy && !order1LooksLikeBuy) {
+            buyOrder = order2;
+            sellOrder = order1;
+        }
+
         order1.status = OrderStatus.MATCHED;
         order2.status = OrderStatus.MATCHED;
 
@@ -208,30 +236,30 @@ contract OrderBook is IMatchingEngine {
         // option B) aggressor price (order1 amounts, current behaviour)
         // option C) midpoint price
         // Update securitiesAmount and cashAmount accordingly once decided.
-        uint256 securitiesAmount = order1.amountOut;
-        uint256 cashAmount       = order1.amountIn;
+        uint256 securitiesAmount = buyOrder.amountOut;
+        uint256 cashAmount       = buyOrder.amountIn;
 
         _matches[matchId] = Match({
             matchId: matchId,
-            buyOrderId: orderId1,
-            sellOrderId: orderId2,
-            buyer: order1.trader,
-            seller: order2.trader,
-            tokenIn: order1.tokenIn,
-            tokenOut: order1.tokenOut,
-            amountIn: order1.amountIn,
-            amountOut: order1.amountOut,
+            buyOrderId: buyOrder.orderId,
+            sellOrderId: sellOrder.orderId,
+            buyer: buyOrder.trader,
+            seller: sellOrder.trader,
+            tokenIn: buyOrder.tokenIn,
+            tokenOut: buyOrder.tokenOut,
+            amountIn: buyOrder.amountIn,
+            amountOut: buyOrder.amountOut,
             timestamp: block.timestamp
         });
 
-        emit OrderMatched(matchId, orderId1, orderId2);
+        emit OrderMatched(matchId, buyOrder.orderId, sellOrder.orderId);
 
         // Trigger DvP settlement
         _settlement.settle(
-            order1.trader,    // buyer
-            order2.trader,    // seller
-            order1.tokenOut,  // securitiesToken (what buyer wants)
-            order1.tokenIn,   // cashToken (what buyer is giving)
+            buyOrder.trader,    // buyer
+            sellOrder.trader,   // seller
+            buyOrder.tokenOut,  // securitiesToken (what buyer wants)
+            buyOrder.tokenIn,   // cashToken (what buyer is giving)
             securitiesAmount,
             cashAmount
         );
