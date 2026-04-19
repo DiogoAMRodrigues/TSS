@@ -1,0 +1,79 @@
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const path = require("path");
+const IdentityClient = require("./services/identityClient");
+const SimulatedEidasProvider = require("./providers/simulatedEidasProvider");
+const createKycRouter = require("./routes/kycRoutes");
+const { configureStore } = require("./state/store");
+const { createAuth } = require("./security/auth");
+const { createRateLimiters } = require("./security/rateLimit");
+const { createReconciliationService } = require("./services/reconciliationService");
+
+dotenv.config({ path: path.resolve(process.cwd(), "middleware/.env") });
+dotenv.config();
+
+function buildConfig() {
+  const corsOrigin = process.env.CORS_ORIGIN || "*";
+  const defaultPersistEnabled = process.env.NODE_ENV !== "test";
+  return {
+    port: Number(process.env.MIDDLEWARE_PORT || 8080),
+    attestationDays: Number(process.env.ATTESTATION_DAYS || 90),
+    challengeTtlSeconds: Number(process.env.CHALLENGE_TTL_SECONDS || 300),
+    corsOrigin,
+    persistEnabled: String(
+      process.env.STORE_PERSIST_ENABLED || String(defaultPersistEnabled)
+    ).toLowerCase() !== "false",
+    persistFilePath: process.env.STORE_PERSIST_FILE || "middleware/data/store.json",
+    reconciliationIntervalMs: Number(process.env.RECONCILE_INTERVAL_MS || 0),
+  };
+}
+
+function createApp(options = {}) {
+  const config = options.config || buildConfig();
+  configureStore({
+    persistEnabled: config.persistEnabled,
+    persistFilePath: config.persistFilePath,
+  });
+
+  const identityClient = options.identityClient || new IdentityClient();
+  const providerAdapter = options.providerAdapter || new SimulatedEidasProvider();
+  const auth = options.auth || createAuth();
+  const rateLimiters = options.rateLimiters || createRateLimiters();
+  const reconciliationService =
+    options.reconciliationService || createReconciliationService(identityClient);
+
+  if (config.reconciliationIntervalMs > 0) {
+    reconciliationService.start(config.reconciliationIntervalMs);
+  }
+
+  const app = express();
+
+  app.use(
+    cors({
+      origin: config.corsOrigin === "*" ? true : config.corsOrigin,
+    })
+  );
+  app.use(express.json({ limit: "1mb" }));
+
+  app.get("/health", (req, res) => {
+    res.json({ ok: true, service: "tss-kyc-middleware" });
+  });
+
+  app.use(
+    "/api/kyc",
+    createKycRouter({
+      identityClient,
+      providerAdapter,
+      config,
+      auth,
+      rateLimiters,
+      reconciliationService,
+    })
+  );
+
+  return { app, config, reconciliationService, auth, rateLimiters };
+}
+
+module.exports = createApp;
+module.exports.buildConfig = buildConfig;

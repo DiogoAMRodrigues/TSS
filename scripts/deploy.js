@@ -1,4 +1,6 @@
 const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
@@ -78,6 +80,28 @@ async function main() {
   console.log("OrderBook:", await orderBook.getAddress());
   console.log("SecuritiesToken:", await securitiesToken.getAddress());
   console.log("CashToken:", await cashToken.getAddress());
+
+  const addresses = {
+    network: hre.network.name,
+    deployedAt: new Date().toISOString(),
+    contracts: {
+      Identity: await identity.getAddress(),
+      Registry: await registry.getAddress(),
+      Settlement: await settlement.getAddress(),
+      OrderBook: await orderBook.getAddress(),
+      SecuritiesToken: await securitiesToken.getAddress(),
+      CashToken: await cashToken.getAddress(),
+    },
+  };
+
+  const deploymentsDir = path.join(__dirname, "..", "deployments");
+  if (!fs.existsSync(deploymentsDir)) {
+    fs.mkdirSync(deploymentsDir, { recursive: true });
+  }
+
+  const outputPath = path.join(deploymentsDir, `${hre.network.name}.json`);
+  fs.writeFileSync(outputPath, JSON.stringify(addresses, null, 2));
+  console.log("Deployment addresses saved to:", outputPath);
 }
 
 main().catch((error) => {

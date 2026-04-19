@@ -4,7 +4,20 @@
   "description": "Started out by running: \"besu operator generate-blockchain-config --config-file=ibftConfigFile.json --to=networkFiles --private-key-file-name=key\"",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:contracts:besu": "npx hardhat test --network besu",
+    "test:contracts:local": "npx hardhat test",
+    "test:middleware": "npx mocha \"test/middleware/**/*.test.js\"",
+    "test:middleware:hardhat-chain": "npx hardhat test test/integration/MiddlewareHardhat.integration.test.js",
+    "test:middleware:besu-chain": "npx mocha test/integration/MiddlewareBesu.integration.test.js --timeout 120000",
+    "test:middleware:besu-check": "node scripts/check-besu-test-readiness.js",
+    "test:middleware:besu-chain:strict": "set BESU_TEST_REQUIRE_READY=1&& npx mocha test/integration/MiddlewareBesu.integration.test.js --timeout 120000",
+    "test:all": "node scripts/run-all-tests.js local",
+    "test:all:besu-only": "node scripts/run-all-tests.js besu-only",
+    "test:all:besu": "node scripts/run-all-tests.js besu",
+    "middleware:start": "node middleware/src/server.js",
+    "middleware:dev": "node --watch middleware/src/server.js",
+    "middleware:prepare-env": "node scripts/prepare-middleware-env.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +26,14 @@
     "@nomicfoundation/hardhat-ethers": "^3.1.3",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "ethers": "^6.16.0",
-    "hardhat": "^2.28.6"
+    "hardhat": "^2.28.6",
+    "sinon": "^21.1.2",
+    "supertest": "^7.2.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2"
   }
 }

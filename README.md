@@ -132,6 +132,62 @@ docker compose up
 npx hardhat test --network besu
 ```
 
+## KYC Middleware (Simulated eIDAS)
+
+A prototype middleware is available under `middleware/` to simulate eIDAS/KYC and write decisions to `Identity.sol`.
+
+### Middleware setup
+1. Deploy contracts:
+	```bash
+	npx hardhat run scripts/deploy.js --network besu
+	```
+2. Generate middleware env from deployment output:
+	```bash
+	npm run middleware:prepare-env
+	```
+3. Start the API:
+	```bash
+	npm run middleware:start
+	```
+4. Run middleware tests:
+	```bash
+	npm run test:middleware
+	```
+5. Run chain-backed integration tests:
+	```bash
+	# Fast full pass without Besu contracts
+	npm run test:all
+
+	# Besu-only pass (contracts on Besu + Besu middleware integration)
+	npm run test:all:besu-only
+
+	# Full matrix in one command (slowest: includes everything above)
+	npm run test:all:besu
+
+	# In-process local chain (Hardhat)
+	npm run test:middleware:hardhat-chain
+
+	# Check Besu test prerequisites (RPC, identity address, operator key)
+	npm run test:middleware:besu-check
+
+	# Live Besu chain (requires running network + deployed Identity)
+	npm run test:middleware:besu-chain
+
+	# Strict mode: fail instead of skip when Besu prerequisites are missing
+	npm run test:middleware:besu-chain:strict
+	```
+
+The deployment script now stores addresses in `deployments/besu.json`, which is used to prefill `middleware/.env`.
+See `middleware/README.md` for endpoints and request examples.
+
+Security additions in middleware:
+- API key authentication + role-based authorization.
+- Rate limiting for request and verification endpoints.
+- Persistent middleware state storage.
+- Optional periodic/manual on-chain reconciliation endpoint.
+
+Note: middleware protected endpoints require an `x-api-key` header.
+
 ## Architecture
 4-layer architecture:
 - **Layer 1**: Permissioned Blockchain (Hyperledger Besu, IBFT 2.0)
