@@ -23,6 +23,8 @@ contract Identity is IAccessControl {
         bytes32 role;
         bool active;
         uint256 expiry;
+        bool easyReverification;
+        bool preferenceSet;
     }
 
     mapping(address => UserRecord) private _users;
@@ -56,7 +58,9 @@ contract Identity is IAccessControl {
         _users[msg.sender] = UserRecord({
             role: OPERATOR,
             active: true,
-            expiry: type(uint256).max
+            expiry: type(uint256).max,
+            easyReverification: true,
+            preferenceSet: true
         });
     }
 
@@ -68,10 +72,17 @@ contract Identity is IAccessControl {
             role == TRADER || role == ISSUER || role == OPERATOR || role == REGULATOR,
             "Identity: invalid role"
         );
+
+        bool easyReverification = _users[user].preferenceSet
+            ? _users[user].easyReverification
+            : true;
+
         _users[user] = UserRecord({
             role: role,
             active: true,
-            expiry: type(uint256).max
+            expiry: type(uint256).max,
+            easyReverification: easyReverification,
+            preferenceSet: true
         });
         emit UserWhitelisted(user, role);
     }
@@ -102,9 +113,23 @@ contract Identity is IAccessControl {
 
     function updateAttestation(address user, uint256 newExpiry) external override onlyOperator {
         require(_users[user].active, "Identity: user not active");
+        require(_users[user].easyReverification, "Identity: user requires full reverification");
         require(newExpiry > block.timestamp, "Identity: expiry must be in future");
         _users[user].expiry = newExpiry;
         emit AttestationUpdated(user, newExpiry);
+    }
+
+    function setReverificationPreference(bool easyReverification) external override {
+        _users[msg.sender].easyReverification = easyReverification;
+        _users[msg.sender].preferenceSet = true;
+        emit ReverificationPreferenceUpdated(msg.sender, easyReverification);
+    }
+
+    function prefersEasyReverification(address user) external view override returns (bool) {
+        if (_users[user].preferenceSet) {
+            return _users[user].easyReverification;
+        }
+        return true;
     }
 
     // --- Admin Transfer ---

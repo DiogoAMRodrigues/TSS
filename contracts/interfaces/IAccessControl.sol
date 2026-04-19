@@ -15,6 +15,7 @@ interface IAccessControl {
     event UserWhitelisted(address indexed user, bytes32 role);
     event UserRevoked(address indexed user);
     event AttestationUpdated(address indexed user, uint256 expiry);
+    event ReverificationPreferenceUpdated(address indexed user, bool easyReverification);
 
     // --- Functions ---
 
@@ -29,4 +30,8 @@ interface IAccessControl {
     function isExpired(address user) external view returns (bool);
 
     function updateAttestation(address user, uint256 newExpiry) external;
+
+    function setReverificationPreference(bool easyReverification) external;
+
+    function prefersEasyReverification(address user) external view returns (bool);
 }

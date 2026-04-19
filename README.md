@@ -62,6 +62,21 @@ The system uses a generic plugin architecture where any matching mechanism can p
 ### Deployment order
 Identity → Registry → Settlement → OrderBook → SecuritiesToken → CashToken → Register tokens
 
+### Identity re-verification modes
+The identity contract now supports user-selectable re-verification behavior after attestation expiry.
+
+- Easy re-verification (default): operator can refresh the user attestation on-chain by calling `updateAttestation(user, newExpiry)`.
+- Full re-verification required: user opts out of easy refresh, and then `updateAttestation` reverts for that user. In this mode, the provider must run the full off-chain KYC flow again and then call `whitelist(user, role)`.
+
+User preference control:
+- User enables/disables easy refresh with `setReverificationPreference(bool easyReverification)`.
+- Current preference can be read with `prefersEasyReverification(address user)`.
+
+Suggested operational flow:
+- During onboarding, ask the user which mode they want.
+- If easy mode: keep using attestation refresh (`updateAttestation`) when KYC evidence is renewed.
+- If strict mode: re-run full KYC and re-whitelist on each renewal cycle.
+
 ## Hardhat
 
 ### Compile contracts
@@ -126,4 +141,5 @@ npx hardhat test --network besu
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Start looking into KYC/eIDAS
+- Add contracts for trading: 
+- Start looking into KYC/eIDAS -> do a middleware that simulates it for now, MAYBE later make the actual one with eIDAS

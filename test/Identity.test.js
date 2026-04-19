@@ -222,6 +222,14 @@ describe("Identity", function () {
       ).to.be.revertedWith("Identity: expiry must be in future");
     });
 
+    it("should reject expiry equal to current block timestamp", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      await expect(
+        identity.updateAttestation(trader.address, block.timestamp)
+      ).to.be.revertedWith("Identity: expiry must be in future");
+    });
+
     it("should reject updating attestation from non-operator", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
       const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
@@ -280,6 +288,109 @@ describe("Identity", function () {
       await expect(
         registry.connect(operator2).registerAsset(stranger.address, ERC20_TYPE, deployer.address)
       ).to.be.revertedWith("Registry: caller is not an operator");
+    });
+  });
+
+  describe("Reverification Preference", function () {
+    it("should default to easy reverification for addresses without explicit preference", async function () {
+      expect(await identity.prefersEasyReverification(stranger.address)).to.be.true;
+    });
+
+    it("should allow user to opt out and force full reverification", async function () {
+      await send(identity.connect(trader).setReverificationPreference(false));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+
+      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      await expect(
+        identity.updateAttestation(trader.address, newExpiry)
+      ).to.be.revertedWith("Identity: user requires full reverification");
+
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      expect(await identity.isWhitelisted(trader.address)).to.be.true;
+    });
+
+    it("should allow user to switch back to easy reverification", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.connect(trader).setReverificationPreference(false));
+
+      const firstExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      await expect(
+        identity.updateAttestation(trader.address, firstExpiry)
+      ).to.be.revertedWith("Identity: user requires full reverification");
+
+      await send(identity.connect(trader).setReverificationPreference(true));
+      const secondExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
+      await send(identity.updateAttestation(trader.address, secondExpiry));
+      expect(await identity.isExpired(trader.address)).to.be.false;
+    });
+
+    it("should preserve strict preference across revoke and re-whitelist", async function () {
+      await send(identity.connect(trader).setReverificationPreference(false));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.revoke(trader.address));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+
+      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      await expect(
+        identity.updateAttestation(trader.address, newExpiry)
+      ).to.be.revertedWith("Identity: user requires full reverification");
+    });
+
+    it("should apply preference set before first whitelist", async function () {
+      await send(identity.connect(trader).setReverificationPreference(false));
+      expect(await identity.prefersEasyReverification(trader.address)).to.be.false;
+
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      await expect(
+        identity.updateAttestation(trader.address, newExpiry)
+      ).to.be.revertedWith("Identity: user requires full reverification");
+    });
+
+    it("strict preference should not block unrelated identity flows", async function () {
+      await send(identity.connect(trader).setReverificationPreference(false));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+
+      expect(await identity.isWhitelisted(trader.address)).to.be.true;
+      expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
+
+      await send(identity.revoke(trader.address));
+      expect(await identity.isWhitelisted(trader.address)).to.be.false;
+      expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
+
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      expect(await identity.isWhitelisted(trader.address)).to.be.true;
+      expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
+    });
+
+    it("should preserve explicit easy preference across revoke and re-whitelist", async function () {
+      await send(identity.connect(trader).setReverificationPreference(true));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.revoke(trader.address));
+      await send(identity.whitelist(trader.address, TRADER_ROLE));
+
+      expect(await identity.prefersEasyReverification(trader.address)).to.be.true;
+      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      await send(identity.updateAttestation(trader.address, newExpiry));
+      expect(await identity.isExpired(trader.address)).to.be.false;
+    });
+
+    it("should allow strict operator to regain privileges only after full re-whitelist", async function () {
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      const block = await ethers.provider.getBlock("latest");
+      await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
+      await send(identity.connect(operator2).setReverificationPreference(false));
+
+      await waitForExpiry();
+
+      await expect(
+        identity.connect(operator2).whitelist(trader.address, TRADER_ROLE)
+      ).to.be.revertedWith("Identity: caller is not an operator");
+
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE));
+      expect(await identity.isWhitelisted(trader.address)).to.be.true;
+      expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
     });
   });
 
@@ -359,6 +470,23 @@ describe("Identity", function () {
       await expect(tx)
         .to.emit(identity, "AttestationUpdated")
         .withArgs(trader.address, newExpiry);
+    });
+
+    it("should emit ReverificationPreferenceUpdated when user changes preference", async function () {
+      const tx = await identity.connect(trader).setReverificationPreference(false);
+      await tx.wait();
+      await expect(tx)
+        .to.emit(identity, "ReverificationPreferenceUpdated")
+        .withArgs(trader.address, false);
+    });
+
+    it("should emit ReverificationPreferenceUpdated when user switches back to easy mode", async function () {
+      await send(identity.connect(trader).setReverificationPreference(false));
+      const tx = await identity.connect(trader).setReverificationPreference(true);
+      await tx.wait();
+      await expect(tx)
+        .to.emit(identity, "ReverificationPreferenceUpdated")
+        .withArgs(trader.address, true);
     });
   });
 });
