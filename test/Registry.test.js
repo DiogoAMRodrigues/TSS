@@ -19,9 +19,18 @@ describe("Registry", function () {
     return tx;
   }
 
-  async function waitForExpiry() {
+  async function latestTs() {
+    const block = await ethers.provider.getBlock("latest");
+    return Number(block.timestamp);
+  }
+
+  async function waitForExpiry(targetExpiry) {
     if (network.name === "besu") {
-      await new Promise(r => setTimeout(r, 12000));
+      for (let i = 0; i < 30; i++) {
+        if ((await latestTs()) > targetExpiry) return;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      throw new Error("Timed out waiting for expiry on Besu");
     } else {
       await ethers.provider.send("evm_increaseTime", [20]);
       await ethers.provider.send("evm_mine");
@@ -145,8 +154,9 @@ describe("Registry", function () {
     it("should reject registration from expired operator", async function () {
       await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
       const block = await ethers.provider.getBlock("latest");
-      await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
-      await waitForExpiry();
+      const nearExpiry = block.timestamp + 10;
+      await send(identity.updateAttestation(operator2.address, nearExpiry));
+      await waitForExpiry(nearExpiry);
       await expect(
         registry.connect(operator2).registerAsset(addr1.address, ERC20_TYPE, issuer.address)
       ).to.be.revertedWith("Registry: caller is not an operator");
@@ -202,8 +212,9 @@ describe("Registry", function () {
       await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
       await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
       const block = await ethers.provider.getBlock("latest");
-      await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
-      await waitForExpiry();
+      const nearExpiry = block.timestamp + 10;
+      await send(identity.updateAttestation(operator2.address, nearExpiry));
+      await waitForExpiry(nearExpiry);
       await expect(
         registry.connect(operator2).deactivateAsset(addr1.address)
       ).to.be.revertedWith("Registry: caller is not an operator");

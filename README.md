@@ -15,7 +15,7 @@ TSS/
 │   ├── interfaces/     # IAccessControl, ITokenTransfer, IDvPTrigger, IMatchingEngine, IRegistry
 │   ├── identity/       # Identity.sol - KYC & role-based access control
 │   ├── tokens/         # SecuritiesToken.sol, CashToken.sol
-│   ├── trading/        # OrderBook.sol - IMatchingEngine implementation
+│   ├── trading/        # OrderBook.sol, AMM.sol - IMatchingEngine implementations
 │   ├── settlement/     # Settlement.sol - atomic DvP
 │   └── registry/       # Registry.sol - asset directory
 ├── networkFiles/       # Generated validator keys and genesis (gitignored)
@@ -57,10 +57,18 @@ The system uses a generic plugin architecture where any matching mechanism can p
 - **CashToken.sol** - ERC-20 tokenized EUR for DvP cash leg.
 - **Registry.sol** - Tracks all deployed compliant token contracts.
 - **OrderBook.sol** - On-chain order book implementing `IMatchingEngine`. Price-time priority matching. Triggers DvP on match.
+- **AMM.sol** - Constant-product automated market maker implementing `IMatchingEngine`. Uses the same settlement/compliance layer with pool-based execution.
 - **Settlement.sol** - Atomic DvP settlement. Both token transfers succeed or both revert. Generic - works with any `IMatchingEngine` implementation.
 
 ### Deployment order
-Identity → Registry → Settlement → OrderBook → SecuritiesToken → CashToken → Register tokens
+Identity → Registry → Settlement → OrderBook/AMM → SecuritiesToken → CashToken → Register tokens
+
+### Plugin evaluation
+The thesis now compares the matching plugins directly with equivalent scenarios to show that the same compliance and settlement backbone supports different execution models.
+
+- `test/PluginComparison.test.js` runs parity scenarios across OrderBook and AMM.
+- The comparison covers successful settlement, authorization failure, allowance failure, whitelist failure, registry deactivation, and paused settlement.
+- The suite also records gas and transaction-count evidence for equivalent paths.
 
 ### Identity re-verification modes
 The identity contract now supports user-selectable re-verification behavior after attestation expiry.
@@ -91,7 +99,6 @@ npx hardhat test
 
 ### Run tests (against Besu network)
 Requires the network to be running (`docker compose up` in a separate terminal).  
-Before running, comment out the two lines marked `// LOCAL ONLY` in the Expiry Behavior tests in `test/Identity.test.js`.
 ```bash
 npx hardhat test --network besu
 ```
@@ -135,11 +142,10 @@ npx hardhat test --network besu
 ## Progress
 - [x] February - Besu network setup, Hardhat toolchain
 - [x] March - Identity, SecuritiesToken, CashToken, Registry
-- [x] April - OrderBook, Settlement, end-to-end DvP flow tested
+- [x] April - OrderBook, Settlement, AMM, end-to-end DvP flow tested
 - [ ] May - KYC/eIDAS integration, React frontend
-- [ ] June - Evaluation and performance testing
+- [ ] June - Evaluation and performance testing and thesis writeup support
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Add contracts for trading: 
 - Start looking into KYC/eIDAS -> do a middleware that simulates it for now, MAYBE later make the actual one with eIDAS

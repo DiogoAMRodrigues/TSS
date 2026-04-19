@@ -18,9 +18,22 @@ describe("Identity", function () {
     return tx;
   }
 
-  async function waitForExpiry() {
+  async function latestTs() {
+    const block = await ethers.provider.getBlock("latest");
+    return Number(block.timestamp);
+  }
+
+  async function futureTs(secondsFromNow) {
+    return (await latestTs()) + secondsFromNow;
+  }
+
+  async function waitForExpiry(targetExpiry) {
     if (network.name === "besu") {
-      await new Promise(r => setTimeout(r, 12000));
+      for (let i = 0; i < 30; i++) {
+        if ((await latestTs()) > targetExpiry) return;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      throw new Error("Timed out waiting for expiry on Besu");
     } else {
       await ethers.provider.send("evm_increaseTime", [20]);
       await ethers.provider.send("evm_mine");
@@ -202,13 +215,13 @@ describe("Identity", function () {
   describe("Attestation", function () {
     it("should allow operator to update attestation expiry", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60 * 2);
       await send(identity.updateAttestation(trader.address, newExpiry));
       expect(await identity.isExpired(trader.address)).to.be.false;
     });
 
     it("should reject updating attestation for inactive user", async function () {
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(stranger.address, newExpiry)
       ).to.be.revertedWith("Identity: user not active");
@@ -216,7 +229,7 @@ describe("Identity", function () {
 
     it("should reject expiry in the past", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-      const pastExpiry = Math.floor(Date.now() / 1000) - 1000;
+      const pastExpiry = (await latestTs()) - 1000;
       await expect(
         identity.updateAttestation(trader.address, pastExpiry)
       ).to.be.revertedWith("Identity: expiry must be in future");
@@ -232,7 +245,7 @@ describe("Identity", function () {
 
     it("should reject updating attestation from non-operator", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.connect(stranger).updateAttestation(trader.address, newExpiry)
       ).to.be.revertedWith("Identity: caller is not an operator");
@@ -254,7 +267,7 @@ describe("Identity", function () {
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
-      await waitForExpiry();
+      await waitForExpiry(nearExpiry);
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       expect(await identity.isExpired(trader.address)).to.be.true;
     });
@@ -264,7 +277,7 @@ describe("Identity", function () {
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
-      await waitForExpiry();
+      await waitForExpiry(nearExpiry);
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       await send(identity.whitelist(trader.address, TRADER_ROLE));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
@@ -275,7 +288,7 @@ describe("Identity", function () {
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
-      await waitForExpiry();
+      await waitForExpiry(nearExpiry);
       expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
     });
 
@@ -284,7 +297,7 @@ describe("Identity", function () {
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(operator2.address, nearExpiry));
-      await waitForExpiry();
+      await waitForExpiry(nearExpiry);
       await expect(
         registry.connect(operator2).registerAsset(stranger.address, ERC20_TYPE, deployer.address)
       ).to.be.revertedWith("Registry: caller is not an operator");
@@ -300,7 +313,7 @@ describe("Identity", function () {
       await send(identity.connect(trader).setReverificationPreference(false));
       await send(identity.whitelist(trader.address, TRADER_ROLE));
 
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, newExpiry)
       ).to.be.revertedWith("Identity: user requires full reverification");
@@ -313,13 +326,13 @@ describe("Identity", function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
       await send(identity.connect(trader).setReverificationPreference(false));
 
-      const firstExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const firstExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, firstExpiry)
       ).to.be.revertedWith("Identity: user requires full reverification");
 
       await send(identity.connect(trader).setReverificationPreference(true));
-      const secondExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
+      const secondExpiry = await futureTs(365 * 24 * 60 * 60 * 2);
       await send(identity.updateAttestation(trader.address, secondExpiry));
       expect(await identity.isExpired(trader.address)).to.be.false;
     });
@@ -330,7 +343,7 @@ describe("Identity", function () {
       await send(identity.revoke(trader.address));
       await send(identity.whitelist(trader.address, TRADER_ROLE));
 
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, newExpiry)
       ).to.be.revertedWith("Identity: user requires full reverification");
@@ -341,7 +354,7 @@ describe("Identity", function () {
       expect(await identity.prefersEasyReverification(trader.address)).to.be.false;
 
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, newExpiry)
       ).to.be.revertedWith("Identity: user requires full reverification");
@@ -370,7 +383,7 @@ describe("Identity", function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
 
       expect(await identity.prefersEasyReverification(trader.address)).to.be.true;
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await send(identity.updateAttestation(trader.address, newExpiry));
       expect(await identity.isExpired(trader.address)).to.be.false;
     });
@@ -381,7 +394,7 @@ describe("Identity", function () {
       await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
       await send(identity.connect(operator2).setReverificationPreference(false));
 
-      await waitForExpiry();
+      await waitForExpiry(block.timestamp + 10);
 
       await expect(
         identity.connect(operator2).whitelist(trader.address, TRADER_ROLE)
@@ -464,7 +477,7 @@ describe("Identity", function () {
 
     it("should emit AttestationUpdated on updateAttestation", async function () {
       await send(identity.whitelist(trader.address, TRADER_ROLE));
-      const newExpiry = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60 * 2;
+      const newExpiry = await futureTs(365 * 24 * 60 * 60 * 2);
       const tx = await identity.updateAttestation(trader.address, newExpiry);
       await tx.wait();
       await expect(tx)
