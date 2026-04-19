@@ -29,3 +29,10 @@ genesis.json
 docker-compose.yml
 
 APONTAMENTOS.txt
+
+# Generated deployment outputs
+deployments/
+
+# Local middleware secrets/runtime state
+middleware/.env
+middleware/data/
