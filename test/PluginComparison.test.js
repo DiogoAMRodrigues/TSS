@@ -1,7 +1,9 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 describe("Plugin Comparison (OrderBook vs AMM)", function () {
+  this.timeout(180000);
+
   const TRADER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("TRADER"));
   const CASH_TOKEN_TYPE = ethers.encodeBytes32String("CASH_TOKEN");
   const SECURITIES_TYPE = ethers.encodeBytes32String("SECURITIES");
@@ -13,6 +15,9 @@ describe("Plugin Comparison (OrderBook vs AMM)", function () {
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
+    if (network.name === "besu") {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    }
     return tx;
   }
 

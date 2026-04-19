@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 describe("AMM", function () {
   let identity, registry, settlement, amm, securitiesToken, cashToken;
@@ -20,7 +20,26 @@ describe("AMM", function () {
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
+    if (network.name === "besu") {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    }
     return tx;
+  }
+
+  async function getEventFromTx(txPromise, eventName) {
+    const tx = await txPromise;
+    const receipt = await tx.wait();
+    const parsed = receipt.logs
+      .map((log) => {
+        try {
+          return amm.interface.parseLog(log);
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    return parsed.find((evt) => evt.name === eventName) || null;
   }
 
   function getAmountOut(amountIn, reserveIn, reserveOut, feeBps = FEE_BPS) {
@@ -147,11 +166,14 @@ describe("AMM", function () {
     });
 
     it("should emit PoolInitialized", async function () {
-      await expect(
-        amm.initializePool(await cashToken.getAddress(), await securitiesToken.getAddress())
-      )
-        .to.emit(amm, "PoolInitialized")
-        .withArgs(await cashToken.getAddress(), await securitiesToken.getAddress(), FEE_BPS);
+      const evt = await getEventFromTx(
+        amm.initializePool(await cashToken.getAddress(), await securitiesToken.getAddress()),
+        "PoolInitialized"
+      );
+      expect(evt).to.not.equal(null);
+      expect(evt.args[0]).to.equal(await cashToken.getAddress());
+      expect(evt.args[1]).to.equal(await securitiesToken.getAddress());
+      expect(evt.args[2]).to.equal(FEE_BPS);
     });
 
     it("should reject non-operator initializer", async function () {
@@ -220,9 +242,15 @@ describe("AMM", function () {
       await send(securitiesToken.connect(lp).approve(await amm.getAddress(), TEN));
       await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
 
-      await expect(amm.connect(lp).addLiquidity(TEN, TEN))
-        .to.emit(amm, "LiquidityAdded")
-        .withArgs(lp.address, TEN, TEN, TEN);
+      const evt = await getEventFromTx(
+        amm.connect(lp).addLiquidity(TEN, TEN),
+        "LiquidityAdded"
+      );
+      expect(evt).to.not.equal(null);
+      expect(evt.args[0]).to.equal(lp.address);
+      expect(evt.args[1]).to.equal(TEN);
+      expect(evt.args[2]).to.equal(TEN);
+      expect(evt.args[3]).to.equal(TEN);
     });
 
     it("should reject adding zero amounts", async function () {
@@ -308,9 +336,15 @@ describe("AMM", function () {
 
     it("should emit LiquidityRemoved on removeLiquidity", async function () {
       await bootstrapPool();
-      await expect(amm.connect(lp).removeLiquidity(FIFTY))
-        .to.emit(amm, "LiquidityRemoved")
-        .withArgs(lp.address, FIFTY, FIFTY, FIFTY);
+      const evt = await getEventFromTx(
+        amm.connect(lp).removeLiquidity(FIFTY),
+        "LiquidityRemoved"
+      );
+      expect(evt).to.not.equal(null);
+      expect(evt.args[0]).to.equal(lp.address);
+      expect(evt.args[1]).to.equal(FIFTY);
+      expect(evt.args[2]).to.equal(FIFTY);
+      expect(evt.args[3]).to.equal(FIFTY);
     });
   });
 
@@ -593,16 +627,25 @@ describe("AMM", function () {
     });
 
     it("should emit OrderSubmitted and OrderMatched on swap", async function () {
-      await expect(
-        amm.connect(trader).submitOrder(
-          await cashToken.getAddress(),
-          await securitiesToken.getAddress(),
-          ONE,
-          1
-        )
-      )
-        .to.emit(amm, "OrderSubmitted")
-        .and.to.emit(amm, "OrderMatched");
+      const tx = await amm.connect(trader).submitOrder(
+        await cashToken.getAddress(),
+        await securitiesToken.getAddress(),
+        ONE,
+        1
+      );
+      const receipt = await tx.wait();
+      const events = receipt.logs
+        .map((log) => {
+          try {
+            return amm.interface.parseLog(log);
+          } catch (error) {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .map((evt) => evt.name);
+      expect(events).to.include("OrderSubmitted");
+      expect(events).to.include("OrderMatched");
     });
   });
 
@@ -716,14 +759,16 @@ describe("AMM", function () {
 
     it("should emit SwapExecuted on successful swap", async function () {
       const amountOutMin = 1;
-      await expect(
+      const evt = await getEventFromTx(
         amm.connect(trader).submitOrder(
           await cashToken.getAddress(),
           await securitiesToken.getAddress(),
           ONE,
           amountOutMin
-        )
-      ).to.emit(amm, "SwapExecuted");
+        ),
+        "SwapExecuted"
+      );
+      expect(evt).to.not.equal(null);
     });
 
     it("should return empty pending matches", async function () {
@@ -732,12 +777,13 @@ describe("AMM", function () {
     });
 
     it("should emit Paused and Unpaused events", async function () {
-      await expect(amm.pause())
-        .to.emit(amm, "Paused")
-        .withArgs(deployer.address);
-      await expect(amm.unpause())
-        .to.emit(amm, "Unpaused")
-        .withArgs(deployer.address);
+      const pausedEvt = await getEventFromTx(amm.pause(), "Paused");
+      expect(pausedEvt).to.not.equal(null);
+      expect(pausedEvt.args[0]).to.equal(deployer.address);
+
+      const unpausedEvt = await getEventFromTx(amm.unpause(), "Unpaused");
+      expect(unpausedEvt).to.not.equal(null);
+      expect(unpausedEvt.args[0]).to.equal(deployer.address);
     });
   });
 });

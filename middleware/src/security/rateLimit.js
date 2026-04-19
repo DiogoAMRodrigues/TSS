@@ -13,10 +13,10 @@ function createRateLimiters(options = {}) {
     };
   }
 
-  const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || options.windowMs || 60000);
-  const globalMax = Number(process.env.RATE_LIMIT_GLOBAL_MAX || options.globalMax || 120);
-  const challengeMax = Number(process.env.RATE_LIMIT_CHALLENGE_MAX || options.challengeMax || 30);
-  const verifyMax = Number(process.env.RATE_LIMIT_VERIFY_MAX || options.verifyMax || 60);
+  const windowMs = Number(options.windowMs || process.env.RATE_LIMIT_WINDOW_MS || 60000);
+  const globalMax = Number(options.globalMax || process.env.RATE_LIMIT_GLOBAL_MAX || 120);
+  const challengeMax = Number(options.challengeMax || process.env.RATE_LIMIT_CHALLENGE_MAX || 30);
+  const verifyMax = Number(options.verifyMax || process.env.RATE_LIMIT_VERIFY_MAX || 60);
 
   const keyGenerator = (req) => {
     const ipPart = rateLimit.ipKeyGenerator(req.ip || "");

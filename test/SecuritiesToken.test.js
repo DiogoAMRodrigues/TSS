@@ -1,6 +1,6 @@
 // SecuritiesToken.test.js
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 describe("SecuritiesToken", function () {
   let identity, securitiesToken;
@@ -16,6 +16,9 @@ describe("SecuritiesToken", function () {
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
+    if (network.name === "besu") {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    }
     return tx;
   }
 

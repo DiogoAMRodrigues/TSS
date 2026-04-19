@@ -10,6 +10,19 @@ const createKycRouter = require("../../middleware/src/routes/kycRoutes");
 const SimulatedEidasProvider = require("../../middleware/src/providers/simulatedEidasProvider");
 const { resetStore } = require("../../middleware/src/state/store");
 
+const DEFAULT_OPERATOR_PRIVATE_KEY =
+  "0x1ca60577f0b6dbf9ebddeb330615c25824f2e458eed044b0abc3ac954eb1f3db";
+const DEFAULT_NON_OPERATOR_PRIVATE_KEY =
+  "0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f";
+
+function resolvePrivateKey(primary, fallback) {
+  const value = String(primary || "").trim();
+  if (/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    return value;
+  }
+  return fallback;
+}
+
 function loadBesuIdentityAddress() {
   const deploymentPath = path.resolve(process.cwd(), "deployments", "besu.json");
   if (!fs.existsSync(deploymentPath)) {
@@ -83,13 +96,14 @@ describe("Integration: Middleware on Besu network", function () {
     resetStore();
 
     rpcUrl = process.env.BESU_RPC_URL || process.env.RPC_URL || "http://localhost:8545";
-    const operatorPrivateKey =
-      process.env.BESU_OPERATOR_PRIVATE_KEY ||
-      process.env.OPERATOR_PRIVATE_KEY ||
-      "0x1ca60577f0b6dbf9ebddeb330615c25824f2e458eed044b0abc3ac954eb1f3db";
-    const nonOperatorPrivateKey =
-      process.env.BESU_NON_OPERATOR_PRIVATE_KEY ||
-      "0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f";
+    const operatorPrivateKey = resolvePrivateKey(
+      process.env.BESU_OPERATOR_PRIVATE_KEY || process.env.OPERATOR_PRIVATE_KEY,
+      DEFAULT_OPERATOR_PRIVATE_KEY
+    );
+    const nonOperatorPrivateKey = resolvePrivateKey(
+      process.env.BESU_NON_OPERATOR_PRIVATE_KEY,
+      DEFAULT_NON_OPERATOR_PRIVATE_KEY
+    );
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     try {
@@ -138,10 +152,11 @@ describe("Integration: Middleware on Besu network", function () {
     role = "TRADER",
     identityData = { identifier: `besu-${Date.now()}` }
   ) {
+      const walletAddress = ethers.getAddress(wallet.address);
     const requestRes = await request(appInstance)
       .post("/api/kyc/request")
       .send({
-        walletAddress: wallet.address,
+          walletAddress,
         requestedRole: role,
         identityData,
       });
@@ -151,7 +166,7 @@ describe("Integration: Middleware on Besu network", function () {
     const signature = await wallet.signMessage(requestRes.body.challengeMessage);
     const verifyRes = await request(appInstance)
       .post("/api/kyc/verify")
-      .send({ walletAddress: wallet.address, signature, attestationDays: 7 });
+      .send({ walletAddress, signature, attestationDays: 7 });
 
     return { requestRes, verifyRes, signature };
   }

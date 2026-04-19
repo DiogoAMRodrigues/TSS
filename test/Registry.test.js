@@ -16,6 +16,9 @@ describe("Registry", function () {
   async function send(txPromise) {
     const tx = await txPromise;
     await tx.wait();
+    if (network.name === "besu") {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    }
     return tx;
   }
 
