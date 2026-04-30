@@ -36,3 +36,6 @@ deployments/
 # Local middleware secrets/runtime state
 middleware/.env
 middleware/data/
+
+# Bun
+bun.lock

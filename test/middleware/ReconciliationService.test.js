@@ -85,4 +85,76 @@ describe("Middleware: reconciliation service", function () {
     const result = await reconcileIdentityEvents(identityClient);
     expect(result.processed).to.equal(0);
   });
+
+  it("applies events in order so revoke after whitelist results in revoked status", async function () {
+    const identityClient = {
+      provider: {
+        getBlockNumber: async () => 20,
+      },
+      contract: {
+        filters: {
+          UserWhitelisted: () => ({ type: "whitelisted" }),
+          UserRevoked: () => ({ type: "revoked" }),
+          AttestationUpdated: () => ({ type: "attestation" }),
+        },
+        queryFilter: async (filter) => {
+          if (filter.type === "whitelisted") {
+            return [
+              {
+                args: { user: "0x0000000000000000000000000000000000000001" },
+                blockNumber: 10,
+              },
+            ];
+          }
+          if (filter.type === "revoked") {
+            return [
+              {
+                args: { user: "0x0000000000000000000000000000000000000001" },
+                blockNumber: 15,
+              },
+            ];
+          }
+          if (filter.type === "attestation") {
+            return [];
+          }
+          return [];
+        },
+      },
+    };
+
+    const result = await reconcileIdentityEvents(identityClient);
+
+    expect(result.processed).to.equal(2);
+    expect(result.toBlock).to.equal(20);
+
+    const user = users.get("0x0000000000000000000000000000000000000001");
+    expect(user.kycStatus).to.equal("revoked");
+
+    expect(getMeta().lastProcessedBlock).to.equal(20);
+  });
+
+  it("handles provider getBlockNumber failure gracefully", async function () {
+    const identityClient = {
+      provider: {
+        getBlockNumber: async () => {
+          throw new Error("network error");
+        },
+      },
+      contract: {
+        filters: {
+          UserWhitelisted: () => ({}),
+          UserRevoked: () => ({}),
+          AttestationUpdated: () => ({}),
+        },
+        queryFilter: async () => [],
+      },
+    };
+
+    try {
+      await reconcileIdentityEvents(identityClient);
+      expect.fail("Should have thrown an error");
+    } catch (error) {
+      expect(error.message).to.equal("network error");
+    }
+  });
 });
