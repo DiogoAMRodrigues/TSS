@@ -26,10 +26,16 @@ export function WalletProvider({ children }) {
       setIsConnecting(true);
       setError(null);
 
-      // Request account access
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      });
+      // Request account access with timeout
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('MetaMask not responding. Please unlock your wallet and try again.')), 30000)
+      );
+      const accounts = await Promise.race([
+        window.ethereum.request({
+          method: 'eth_requestAccounts'
+        }),
+        timeout
+      ]);
 
       const ethersProvider = new BrowserProvider(window.ethereum);
       const ethersSigner = await ethersProvider.getSigner();

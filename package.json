@@ -4,6 +4,7 @@
   "description": "Started out by running: \"besu operator generate-blockchain-config --config-file=ibftConfigFile.json --to=networkFiles --private-key-file-name=key\"",
   "main": "index.js",
   "scripts": {
+    "start": "node scripts/start-all.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:contracts:besu": "npx hardhat test --network besu",
     "test:contracts:local": "npx hardhat test",

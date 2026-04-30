@@ -25,6 +25,12 @@ TSS/
 └── docs/               # Architecture documentation
 ```
 
+## Quick Start (everything at once)
+```bash
+npm start
+```
+Starts Besu network, middleware, and frontend. Ctrl+C stops everything.
+
 ## Network Setup
 
 ### First time / full reset (regenerates keys and genesis)
