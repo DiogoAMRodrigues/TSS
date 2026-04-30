@@ -1,3 +1,8 @@
+# Middleware (secrets)
+middleware/.env
+middleware/.operator-private-key
+middleware/data/
+
 # Node keys and sensitive data
 networkFiles/
 

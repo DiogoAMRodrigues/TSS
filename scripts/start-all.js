@@ -139,12 +139,43 @@ function spawnWithPrefix(command, args, prefix, cwd) {
 }
 
 /**
+ * Validate middleware environment configuration
+ */
+function validateMiddlewareEnv() {
+  const fs = require('fs');
+  const path = require('path');
+  const envPath = path.join(__dirname, '../middleware/.env');
+  
+  if (!fs.existsSync(envPath)) {
+    console.warn('⚠️  Warning: middleware/.env not found. Using .env.example as template.');
+    return;
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  
+  // Check for line breaks in critical variables
+  if (envContent.includes('MIDDLEWARE_API_KEYS=')) {
+    const apiKeysMatch = envContent.match(/MIDDLEWARE_API_KEYS=([^\n]*(?:\n[^\n]*)*)/);
+    if (apiKeysMatch && apiKeysMatch[0].includes('\n') && !apiKeysMatch[0].includes('\\n')) {
+      console.warn('⚠️  Warning: MIDDLEWARE_API_KEYS appears to have line breaks. Ensure all config values are on single lines.');
+    }
+  }
+  
+  if (!envContent.includes('MIDDLEWARE_API_KEYS=')) {
+    console.warn('⚠️  Warning: MIDDLEWARE_API_KEYS not found in middleware/.env');
+  }
+}
+
+/**
  * Main startup sequence
  */
 async function main() {
   console.log('🚀 Starting TSS stack...\n');
 
   try {
+    // Validate middleware environment
+    validateMiddlewareEnv();
+    
     // Step 1: Start Besu network
     console.log('📦 Starting Besu network...');
     execSync('docker compose up -d', { stdio: 'inherit' });

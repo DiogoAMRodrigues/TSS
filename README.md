@@ -151,6 +151,31 @@ A prototype middleware is available under `middleware/` to simulate eIDAS/KYC an
 	```bash
 	npm run middleware:prepare-env
 	```
+
+### Middleware configuration
+
+The middleware requires a local `.env` file with:
+- **OPERATOR_PRIVATE_KEY_FILE**: Path to a file containing the operator's private key (hex format). This is used to sign on-chain transactions (attestations, whitelisting).
+- **MIDDLEWARE_API_KEYS**: Space-separated key:role pairs for API authentication. Format: `key1:ROLE1;key2:ROLE2`. Roles are CLIENT, OPERATOR, REGULATOR, ADMIN.
+
+**Setup:**
+1. Copy `middleware/.env.example` to `middleware/.env`:
+	```bash
+	cp middleware/.env.example middleware/.env
+	```
+2. Create `middleware/.operator-private-key` with your operator's private key (hex):
+	```bash
+	echo "0x1ca60577f0b6dbf9ebddeb330615c25824f2e458eed044b0abc3ac954eb1f3db" > middleware/.operator-private-key
+	```
+3. Configure `MIDDLEWARE_API_KEYS` in `middleware/.env` (each key on a single line, no line breaks):
+	```
+	MIDDLEWARE_API_KEYS=operator-key:OPERATOR;client-key:CLIENT;regulator-key:REGULATOR
+	```
+
+**Important:** Ensure the `MIDDLEWARE_API_KEYS` line has no line breaks or wrapping. If you see the line split across multiple lines in your editor, the middleware will fail to parse the keys and reject all API requests with 401 errors.
+
+**Git:** Both `middleware/.env` and `middleware/.operator-private-key` are gitignored to prevent accidental secret leaks. Each developer must set these up locally.
+
 3. Start the API:
 	```bash
 	npm run middleware:start
@@ -204,10 +229,18 @@ A React web interface under `frontend/` provides wallet connection (MetaMask), K
 	cd frontend
 	npm install
 	```
-2. Copy env file:
+2. Create env file from example:
 	```bash
 	cp .env.example .env
 	```
+	Configure `VITE_API_URL` and `VITE_API_KEY` to match your middleware setup. Example:
+	```
+	VITE_API_URL=http://localhost:3000
+	VITE_API_KEY=operator-key
+	VITE_DEBUG=true
+	```
+	**Note:** `VITE_DEBUG=true` logs all API calls and responses to the browser console for troubleshooting.
+
 3. Start dev server (requires middleware running on port 3000):
 	```bash
 	npm run dev
