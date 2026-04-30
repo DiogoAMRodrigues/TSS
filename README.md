@@ -188,6 +188,30 @@ Security additions in middleware:
 
 Note: middleware protected endpoints require an `x-api-key` header.
 
+## Frontend (React)
+
+A React web interface under `frontend/` provides wallet connection (MetaMask), KYC verification flow, and an admin panel.
+
+### Frontend setup
+1. Install dependencies:
+	```bash
+	cd frontend
+	npm install
+	```
+2. Copy env file:
+	```bash
+	cp .env.example .env
+	```
+3. Start dev server (requires middleware running on port 3000):
+	```bash
+	npm run dev
+	```
+4. Open `http://localhost:5173`
+
+### Features
+- **User view**: Connect wallet, start KYC (sign challenge via MetaMask), view status/role/expiry, reverify
+- **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state
+
 ## Architecture
 4-layer architecture:
 - **Layer 1**: Permissioned Blockchain (Hyperledger Besu, IBFT 2.0)
@@ -199,7 +223,7 @@ Note: middleware protected endpoints require an `x-api-key` header.
 - [x] February - Besu network setup, Hardhat toolchain
 - [x] March - Identity, SecuritiesToken, CashToken, Registry
 - [x] April - OrderBook, Settlement, AMM, end-to-end DvP flow tested
-- [ ] May - KYC/eIDAS integration, React frontend
+- [x] May - KYC/eIDAS integration, React frontend
 - [ ] June - Evaluation and performance testing and thesis writeup support
 - [ ] July - Dissertation writeup
 

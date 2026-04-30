@@ -1,0 +1,104 @@
+.revoke-form-card {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.revoke-form-card .card-header {
+  background-color: #f9f9f9;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.revoke-form-card .card-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.revoke-form-card .card-body {
+  padding: 20px;
+}
+
+.revoke-form-card .form-group {
+  margin-bottom: 16px;
+}
+
+.revoke-form-card .form-group label {
+  display: block;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.revoke-form-card .form-group input,
+.revoke-form-card .form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.revoke-form-card .form-group input:focus,
+.revoke-form-card .form-group textarea:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.revoke-form-card .form-group input:disabled,
+.revoke-form-card .form-group textarea:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.revoke-form-card .form-group textarea {
+  resize: vertical;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.alert-error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}

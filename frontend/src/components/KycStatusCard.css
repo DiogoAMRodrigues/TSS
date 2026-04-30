@@ -1,0 +1,110 @@
+.kyc-status-card {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.card-header {
+  background-color: #f9f9f9;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.card-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.card-body {
+  padding: 20px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.status-row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  font-weight: 600;
+  color: #666;
+  min-width: 100px;
+  font-size: 14px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-approved {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-pending {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-revoked {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.status-not-started {
+  background-color: #e2e3e5;
+  color: #383d41;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background-color: #e7f3ff;
+  color: #0066cc;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.expiry-date {
+  color: #666;
+  font-size: 14px;
+}
+
+.action-hint {
+  color: #999;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.card-loading,
+.card-error {
+  padding: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.card-loading {
+  color: #666;
+}
+
+.card-error {
+  color: #721c24;
+  background-color: #f8d7da;
+}

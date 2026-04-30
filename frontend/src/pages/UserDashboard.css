@@ -1,0 +1,104 @@
+.user-dashboard {
+  min-height: calc(100vh - 64px);
+  background-color: #f5f5f5;
+  padding: 40px 20px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.welcome-card {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 60px 40px;
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.welcome-card h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.welcome-card p {
+  font-size: 16px;
+  color: #666;
+  margin: 0 0 16px 0;
+}
+
+.welcome-card .description {
+  font-size: 15px;
+  color: #999;
+  margin-top: 20px;
+}
+
+.dashboard-header {
+  margin-bottom: 32px;
+}
+
+.dashboard-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 12px 0;
+}
+
+.wallet-info {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+.wallet-info code {
+  background-color: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  color: #0066cc;
+  font-size: 13px;
+}
+
+.reverify-section {
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 24px;
+}
+
+.reverify-hint {
+  font-size: 14px;
+  color: #0066cc;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .user-dashboard {
+    padding: 20px 16px;
+  }
+
+  .welcome-card {
+    padding: 40px 24px;
+  }
+
+  .welcome-card h1 {
+    font-size: 24px;
+  }
+
+  .dashboard-header h1 {
+    font-size: 22px;
+  }
+
+  .wallet-info {
+    font-size: 13px;
+  }
+
+  .wallet-info code {
+    font-size: 12px;
+  }
+}

@@ -1,0 +1,186 @@
+import { useState } from 'react';
+import { useWallet } from '../context/WalletContext';
+import { api } from '../services/api';
+import './KycFlow.css';
+
+export function KycFlow({ onVerificationComplete }) {
+  const { address, signer } = useWallet();
+  const [step, setStep] = useState(1);
+  const [identifier, setIdentifier] = useState('');
+  const [role, setRole] = useState('TRADER');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [challenge, setChallenge] = useState(null);
+
+  const handleStartKyc = async () => {
+    if (!identifier.trim()) {
+      setError('Please enter an identifier');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      const response = await api.request(address, role, identifier);
+      setChallenge(response.challenge);
+      setStep(2);
+    } catch (err) {
+      setError(err.message || 'Failed to start KYC');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignChallenge = async () => {
+    if (!signer || !challenge) {
+      setError('Signer or challenge not available');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const signature = await signer.signMessage(challenge);
+
+      const response = await api.verify(address, signature);
+
+      setSuccess(response.message || 'KYC verification successful!');
+      setStep(3);
+
+      if (onVerificationComplete) {
+        onVerificationComplete();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to sign challenge');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setStep(1);
+    setIdentifier('');
+    setRole('TRADER');
+    setChallenge(null);
+    setError(null);
+    setSuccess(null);
+  };
+
+  return (
+    <div className="kyc-flow-card">
+      <div className="card-header">
+        <h2>KYC Verification</h2>
+        <div className="step-indicator">
+          Step {step} of 3
+        </div>
+      </div>
+
+      <div className="card-body">
+        {error && (
+          <div className="alert alert-error">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success">
+            {success}
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="step-content">
+            <h3>Step 1: Enter Your Information</h3>
+
+            <div className="form-group">
+              <label htmlFor="identifier">Identifier (Email/ID)</label>
+              <input
+                id="identifier"
+                type="text"
+                placeholder="your-email@example.com or ID number"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="role">Role</label>
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                disabled={loading}
+              >
+                <option value="TRADER">Trader</option>
+                <option value="ISSUER">Issuer</option>
+              </select>
+            </div>
+
+            <button
+              className="btn btn-primary btn-large"
+              onClick={handleStartKyc}
+              disabled={loading}
+            >
+              {loading ? 'Starting KYC...' : 'Start KYC'}
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="step-content">
+            <h3>Step 2: Sign Challenge</h3>
+
+            <div className="challenge-box">
+              <p className="challenge-label">Challenge Message:</p>
+              <code className="challenge-text">{challenge}</code>
+            </div>
+
+            <p className="step-description">
+              Click the button below to sign this challenge with MetaMask. This proves you control this wallet.
+            </p>
+
+            <button
+              className="btn btn-primary btn-large"
+              onClick={handleSignChallenge}
+              disabled={loading}
+            >
+              {loading ? 'Signing...' : 'Sign Challenge with MetaMask'}
+            </button>
+
+            <button
+              className="btn btn-secondary"
+              onClick={handleReset}
+              disabled={loading}
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="step-content">
+            <h3>Step 3: Complete</h3>
+
+            <div className="success-icon">✓</div>
+
+            <p className="step-description">
+              Your KYC verification has been submitted. The status will be updated shortly.
+            </p>
+
+            <button
+              className="btn btn-primary btn-large"
+              onClick={handleReset}
+            >
+              Start New Verification
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
