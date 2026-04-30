@@ -214,6 +214,9 @@ A React web interface under `frontend/` provides wallet connection (MetaMask), K
 	```
 4. Open `http://localhost:5173`
 
+### Debugging
+Set `VITE_DEBUG=true` in `frontend/.env` and open the browser console (F12) to see API calls, keys used, and response statuses.
+
 ### Features
 - **User view**: Connect wallet, start KYC (sign challenge via MetaMask), view status/role/expiry, reverify
 - **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state
