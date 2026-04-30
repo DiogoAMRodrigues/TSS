@@ -270,4 +270,6 @@ Set `VITE_DEBUG=true` in `frontend/.env` and open the browser console (F12) to s
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Start looking into KYC/eIDAS -> do a middleware that simulates it for now, MAYBE later make the actual one with eIDAS
+- Make the actual Frontend prettier
+- Test the Frontend by hand
+- Figure out how to get a URL working or sth to do a real eIDAS implementation
