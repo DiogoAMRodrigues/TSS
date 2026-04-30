@@ -25,7 +25,8 @@ This middleware simulates an eIDAS/KYC provider, verifies wallet ownership by ch
 
    - Copy `middleware/.env.example` to `middleware/.env`
    - Fill `IDENTITY_ADDRESS`
-   - Fill `OPERATOR_PRIVATE_KEY` (must be an address with OPERATOR role in `Identity`)
+  - Create `middleware/.operator-private-key` with the operator private key, or set `OPERATOR_PRIVATE_KEY` locally in your shell
+  - The key file is ignored by Git and should never be committed
 
 4. Start middleware:
 

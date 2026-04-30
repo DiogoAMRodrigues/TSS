@@ -35,6 +35,7 @@ deployments/
 
 # Local middleware secrets/runtime state
 middleware/.env
+middleware/.operator-private-key
 middleware/data/
 
 # Bun
