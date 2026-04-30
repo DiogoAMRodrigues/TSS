@@ -1,5 +1,8 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key';
+const DEBUG = import.meta.env.VITE_DEBUG === 'true';
+
+const log = (...args) => { if (DEBUG) console.log('[api]', ...args); };
 
 const getHeaders = () => ({
   'Content-Type': 'application/json',
@@ -88,12 +91,16 @@ export const api = {
 
   // Get user status
   async getUser(walletAddress) {
-    const res = await fetch(`${API_URL}/api/kyc/users/${walletAddress}`, {
+    const url = `${API_URL}/api/kyc/users/${walletAddress}`;
+    log('GET', url, 'key:', API_KEY);
+    const res = await fetch(url, {
       headers: getHeaders()
     });
+    log('GET', url, '→', res.status, res.statusText);
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
-      throw new Error(error.message || `User lookup failed: ${res.statusText}`);
+      log('Error body:', error);
+      throw new Error(error.error || error.message || `User lookup failed: ${res.statusText}`);
     }
     return res.json();
   },
