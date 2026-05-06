@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Contract, formatUnits, parseUnits } from 'ethers';
 import { useWallet } from '../context/WalletContext';
+import { api } from '../services/api';
 import './OrderBookPage.css';
 
 // Minimal ABI for OrderBook contract
@@ -36,6 +37,7 @@ export function OrderBookPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [kycApproved, setKycApproved] = useState(false);
 
   // Order book state
   const [orders, setOrders] = useState(new Map()); // orderId -> order
@@ -45,6 +47,20 @@ export function OrderBookPage() {
   const orderbookAddress = import.meta.env.VITE_ORDERBOOK_ADDRESS;
   const cashTokenAddress = import.meta.env.VITE_CASH_TOKEN_ADDRESS;
   const securitiesTokenAddress = import.meta.env.VITE_SECURITIES_TOKEN_ADDRESS;
+
+  // Check KYC status when address changes
+  useEffect(() => {
+    const checkKyc = async () => {
+      if (!address) return;
+      try {
+        const res = await api.getUser(address);
+        setKycApproved(res.local?.kycStatus === 'approved');
+      } catch {
+        setKycApproved(false);
+      }
+    };
+    checkKyc();
+  }, [address]);
 
   // Truncate address for display
   const truncateAddress = (addr) => {
@@ -228,6 +244,11 @@ export function OrderBookPage() {
       return;
     }
 
+    if (!kycApproved) {
+      setError('KYC verification required before trading. Please complete KYC first.');
+      return;
+    }
+
     if (!amount || !price || parseFloat(amount) <= 0 || parseFloat(price) <= 0) {
       setError('Please enter valid amount and price');
       return;
@@ -350,6 +371,12 @@ export function OrderBookPage() {
 
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
+
+        {!kycApproved && isConnected && (
+          <div className="kyc-warning">
+            ⚠️ KYC verification required before trading. <a href="/kyc">Complete KYC</a>
+          </div>
+        )}
 
         <div className="orderbook-grid">
           {/* Place Order Card */}

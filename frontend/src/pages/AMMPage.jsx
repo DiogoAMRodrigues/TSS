@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Contract, formatUnits, parseUnits, ZeroAddress } from 'ethers';
 import { useWallet } from '../context/WalletContext';
+import { api } from '../services/api';
 import './AMMPage.css';
 
 // Minimal ABI for AMM contract
@@ -53,10 +54,25 @@ export default function AMMPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [kycApproved, setKycApproved] = useState(false);
 
   const ammAddress = import.meta.env.VITE_AMM_ADDRESS;
   const cashTokenAddress = import.meta.env.VITE_CASH_TOKEN_ADDRESS;
   const securitiesTokenAddress = import.meta.env.VITE_SECURITIES_TOKEN_ADDRESS;
+
+  // Check KYC status when address changes
+  useEffect(() => {
+    const checkKyc = async () => {
+      if (!address) return;
+      try {
+        const res = await api.getUser(address);
+        setKycApproved(res.local?.kycStatus === 'approved');
+      } catch {
+        setKycApproved(false);
+      }
+    };
+    checkKyc();
+  }, [address]);
 
   // Get contract instances
   const getAmmContract = () => {
@@ -170,6 +186,11 @@ export default function AMMPage() {
       return;
     }
 
+    if (!kycApproved) {
+      setError('KYC verification required before trading. Please complete KYC first.');
+      return;
+    }
+
     try {
       setSwapLoading(true);
       setError('');
@@ -217,6 +238,11 @@ export default function AMMPage() {
   const handleAddLiquidity = async () => {
     if (!signer || !addLiquidityCash || !addLiquiditySecurities) {
       setError('Please enter both amounts');
+      return;
+    }
+
+    if (!kycApproved) {
+      setError('KYC verification required before trading. Please complete KYC first.');
       return;
     }
 
@@ -318,6 +344,12 @@ export default function AMMPage() {
 
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
+
+        {!kycApproved && isConnected && (
+          <div className="kyc-warning">
+            ⚠️ KYC verification required before trading. <a href="/kyc">Complete KYC</a>
+          </div>
+        )}
 
         <div className="amm-grid">
           {/* Swap Card */}

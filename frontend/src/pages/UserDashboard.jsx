@@ -65,9 +65,9 @@ export function UserDashboard() {
         </div>
 
         <KycStatusCard
-          status={kycStatus?.status}
+          status={kycStatus?.kycStatus}
           role={kycStatus?.role}
-          expiryDate={kycStatus?.expiryDate}
+          expiryDate={kycStatus?.offchainNextReviewAt}
           loading={loading}
           error={error}
         />
@@ -77,7 +77,7 @@ export function UserDashboard() {
           onReverifyClick={fetchKycStatus}
         />
 
-        {kycStatus?.status === 'approved' && (
+        {kycStatus?.kycStatus === 'approved' && (
           <div className="reverify-section">
             <p className="reverify-hint">
               Your KYC is currently approved. You can reverify at any time to update your information.
