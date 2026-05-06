@@ -69,7 +69,7 @@ export function UserList() {
                 {users.map((user) => (
                   <tr key={user.walletAddress}>
                     <td className="wallet-cell" title={user.walletAddress}>
-                      <code>{truncateAddress(user.walletAddress)}</code>
+                      <code>{user.walletAddress}</code>
                     </td>
                     <td>{user.role || '—'}</td>
                     <td>
