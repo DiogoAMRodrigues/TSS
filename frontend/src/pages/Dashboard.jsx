@@ -35,6 +35,9 @@ export function Dashboard() {
         const cashTokenAddress = import.meta.env.VITE_CASH_TOKEN_ADDRESS;
         const securitiesTokenAddress = import.meta.env.VITE_SECURITIES_TOKEN_ADDRESS;
 
+        console.log('[Dashboard] Token addresses:', { cashTokenAddress, securitiesTokenAddress });
+        console.log('[Dashboard] Provider network:', await provider.getNetwork());
+
         if (!cashTokenAddress || !securitiesTokenAddress) {
           setError('Token addresses not configured. Please deploy smart contracts and configure environment variables.');
           return;
