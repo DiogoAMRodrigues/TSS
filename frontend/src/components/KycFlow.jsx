@@ -25,7 +25,7 @@ export function KycFlow({ onVerificationComplete }) {
       setSuccess(null);
 
       const response = await api.request(address, role, identifier);
-      setChallenge(response.challenge);
+      setChallenge(response.challengeMessage);
       setStep(2);
     } catch (err) {
       setError(err.message || 'Failed to start KYC');
