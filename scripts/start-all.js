@@ -2,6 +2,8 @@
 
 const { spawn, execSync } = require('child_process');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const BESU_RPC_URL = 'http://localhost:8545';
 const MIDDLEWARE_HEALTH_URL = 'http://localhost:3000/api/kyc/health';
@@ -193,7 +195,33 @@ async function main() {
     await pollBesuRPC(BESU_TIMEOUT);
     console.log('✓ Besu network running on :8545\n');
 
-    // Step 3: Start middleware
+    // Step 3: Deploy smart contracts
+    console.log('📦 Deploying smart contracts...');
+    execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
+    console.log('✓ Contracts deployed\n');
+
+    // Step 4: Write frontend .env with deployed addresses
+    console.log('📝 Configuring frontend environment...');
+    const deploymentsPath = path.join(__dirname, '..', 'deployments', 'besu.json');
+    const deployments = JSON.parse(fs.readFileSync(deploymentsPath, 'utf8'));
+    const c = deployments.contracts;
+
+    const frontendEnvPath = path.join(__dirname, '..', 'frontend', '.env');
+    const frontendEnv = [
+      'VITE_API_URL=http://localhost:3000',
+      `VITE_API_KEY=${process.env.VITE_API_KEY || 'operator-dev-key'}`,
+      `VITE_CASH_TOKEN_ADDRESS=${c.CashToken}`,
+      `VITE_SECURITIES_TOKEN_ADDRESS=${c.SecuritiesToken}`,
+      `VITE_ORDERBOOK_ADDRESS=${c.OrderBook}`,
+      `VITE_AMM_ADDRESS=${c.AMM}`,
+      `VITE_IDENTITY_ADDRESS=${c.Identity}`,
+      `VITE_TRADING_MODE=${tradingMode}`,
+      'VITE_DEBUG=false',
+    ].join('\n');
+    fs.writeFileSync(frontendEnvPath, frontendEnv + '\n');
+    console.log('✓ Frontend .env configured with contract addresses\n');
+
+    // Step 5: Start middleware
     console.log('📦 Starting middleware...');
     middlewareProcess = await spawnWithPrefix(
       'node',
@@ -203,12 +231,12 @@ async function main() {
     );
     console.log('✓ Middleware process started\n');
 
-    // Step 4: Wait for middleware health
+    // Step 6: Wait for middleware health
     console.log('⏳ Waiting for middleware health check...');
     await pollEndpoint(MIDDLEWARE_HEALTH_URL, MIDDLEWARE_TIMEOUT, 'Middleware');
     console.log('✓ Middleware running on :3000\n');
 
-    // Step 5: Start frontend dev server
+    // Step 7: Start frontend dev server
     console.log('📦 Starting frontend dev server...');
     frontendProcess = await spawnWithPrefix(
       'npm',
@@ -219,7 +247,7 @@ async function main() {
     );
     console.log('✓ Frontend process started\n');
 
-    // Step 6: Print summary
+    // Step 8: Print summary
     console.log('═══════════════════════════════════════════');
     console.log('✓ Besu network running on :8545');
     console.log('✓ Middleware running on :3000');
