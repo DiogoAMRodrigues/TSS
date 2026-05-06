@@ -291,8 +291,10 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
   router.get("/audit", requireAuth([ROLES.OPERATOR, ROLES.REGULATOR]), (req, res) => {
     const limit = Math.min(200, parsePositiveInt(req.query.limit, 50) || 50);
     const start = parsePositiveInt(req.query.offset, 0);
-    const entries = require("../state/store").auditLog.slice(start, start + limit);
-    return res.json({ total: entries.length, entries });
+    const allEntries = require("../state/store").auditLog;
+    const reversed = [...allEntries].reverse();
+    const entries = reversed.slice(start, start + limit);
+    return res.json({ total: allEntries.length, entries });
   });
 
   router.post("/reconcile", requireAuth([ROLES.OPERATOR]), async (req, res) => {
