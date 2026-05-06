@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { RevokeForm } from '../components/RevokeForm';
 import { AuditLog } from '../components/AuditLog';
 import { UserLookup } from '../components/UserLookup';
+import { UserList } from '../components/UserList';
 import './AdminPanel.css';
 
 export function AdminPanel() {
@@ -36,6 +37,10 @@ export function AdminPanel() {
         </div>
 
         <div className="admin-grid">
+          <div className="admin-section full-width">
+            <UserList />
+          </div>
+
           <div className="admin-section">
             <RevokeForm />
           </div>

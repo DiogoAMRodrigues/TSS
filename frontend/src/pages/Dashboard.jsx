@@ -36,7 +36,8 @@ export function Dashboard() {
         const securitiesTokenAddress = import.meta.env.VITE_SECURITIES_TOKEN_ADDRESS;
 
         if (!cashTokenAddress || !securitiesTokenAddress) {
-          throw new Error('Token addresses not configured');
+          setError('Token addresses not configured. Please deploy smart contracts and configure environment variables.');
+          return;
         }
 
         // Create contract instances

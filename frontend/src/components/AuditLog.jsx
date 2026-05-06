@@ -98,7 +98,6 @@ export function AuditLog() {
                     <th>Timestamp</th>
                     <th>Wallet</th>
                     <th>Action</th>
-                    <th>Status</th>
                     <th>Details</th>
                   </tr>
                 </thead>
@@ -112,15 +111,12 @@ export function AuditLog() {
                         {truncateAddress(entry.walletAddress)}
                       </td>
                       <td className="action">
-                        {entry.action}
-                      </td>
-                      <td className="status">
-                        <span className={`status-badge status-${entry.status?.toLowerCase()}`}>
-                          {entry.status}
+                        <span className={`action-badge action-${entry.action?.toLowerCase()}`}>
+                          {entry.action}
                         </span>
                       </td>
                       <td className="details">
-                        {entry.details || '-'}
+                        {entry.reason || entry.details || (entry.txHash ? `tx: ${entry.txHash.slice(0, 14)}...` : '-')}
                       </td>
                     </tr>
                   ))}

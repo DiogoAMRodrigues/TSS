@@ -89,6 +89,18 @@ export const api = {
     return res.json();
   },
 
+  // List all users (OPERATOR/REGULATOR)
+  async listUsers() {
+    const res = await fetch(`${API_URL}/api/kyc/users`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || error.message || `User list failed: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
   // Get user status
   async getUser(walletAddress) {
     const url = `${API_URL}/api/kyc/users/${walletAddress}`;

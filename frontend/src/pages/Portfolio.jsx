@@ -43,7 +43,8 @@ export function Portfolio() {
         const orderBookAddress = import.meta.env.VITE_ORDERBOOK_ADDRESS;
 
         if (!cashTokenAddress || !securitiesTokenAddress || !ammAddress || !orderBookAddress) {
-          throw new Error('Contract addresses not configured');
+          setError('Contract addresses not configured. Please deploy smart contracts and configure environment variables.');
+          return;
         }
 
         // Create contract instances

@@ -255,6 +255,18 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
     }
   });
 
+  router.get("/users", requireAuth([ROLES.OPERATOR, ROLES.REGULATOR]), (req, res) => {
+    try {
+      const allUsers = [];
+      for (const [key, record] of users.entries()) {
+        allUsers.push({ walletAddress: record.walletAddress || key, ...record });
+      }
+      return res.json({ total: allUsers.length, users: allUsers });
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   router.get("/users/:walletAddress", requireAuth([ROLES.OPERATOR, ROLES.REGULATOR]), async (req, res) => {
     try {
       const walletAddress = req.params.walletAddress;
@@ -292,7 +304,7 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
       const result = await reconciliationService.reconcileOnce();
       return res.json({ ok: true, result });
     } catch (error) {
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: `Reconciliation failed: ${error.message}. Ensure smart contracts are deployed and configured.` });
     }
   });
 
