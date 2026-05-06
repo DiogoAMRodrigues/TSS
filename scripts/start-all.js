@@ -117,12 +117,13 @@ function pollBesuRPC(timeout) {
 /**
  * Spawn a child process with prefixed output
  */
-function spawnWithPrefix(command, args, prefix, cwd) {
+function spawnWithPrefix(command, args, prefix, cwd, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       cwd,
       stdio: ['inherit', 'pipe', 'pipe'],
-      shell: true
+      shell: true,
+      env: { ...process.env, ...extraEnv }
     });
 
     proc.stdout.on('data', (data) => {
@@ -170,6 +171,12 @@ function validateMiddlewareEnv() {
  * Main startup sequence
  */
 async function main() {
+  // Parse trading mode argument
+  const modeArg = process.argv[2];
+  const validModes = ['ob', 'amm'];
+  const tradingMode = validModes.includes(modeArg) ? modeArg : 'ob';
+  console.log(`📊 Trading mode: ${tradingMode === 'ob' ? 'Order Book' : 'AMM'}\n`);
+
   console.log('🚀 Starting TSS stack...\n');
 
   try {
@@ -207,7 +214,8 @@ async function main() {
       'npm',
       ['run', 'dev'],
       'frontend',
-      'frontend'
+      'frontend',
+      { VITE_TRADING_MODE: tradingMode }
     );
     console.log('✓ Frontend process started\n');
 

@@ -27,9 +27,17 @@ TSS/
 
 ## Quick Start (everything at once)
 ```bash
-npm start
+npm start ob    # Start with Order Book trading engine
+npm start amm   # Start with AMM trading engine
+npm start       # Defaults to Order Book
 ```
-Starts Besu network, middleware, and frontend. Ctrl+C stops everything.
+Starts Besu network, deploys contracts, middleware, and frontend with the selected trading engine. Ctrl+C stops everything.
+
+You can also use the shorthand scripts:
+```bash
+npm run start:ob    # Order Book mode
+npm run start:amm   # AMM mode
+```
 
 ## Network Setup
 

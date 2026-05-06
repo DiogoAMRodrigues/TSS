@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node scripts/start-all.js",
+    "start:ob": "node scripts/start-all.js ob",
+    "start:amm": "node scripts/start-all.js amm",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:contracts:besu": "npx hardhat test --network besu",
     "test:contracts:local": "npx hardhat test",

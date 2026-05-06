@@ -37,7 +37,18 @@ async function main() {
   await orderBook.waitForDeployment();
   console.log("OrderBook deployed to:", await orderBook.getAddress());
 
-  // 5. Deploy SecuritiesToken
+  // 5. Deploy AMM (30 bps fee = 0.3%)
+  const AMM = await hre.ethers.getContractFactory("AMM");
+  const amm = await AMM.deploy(
+    await identity.getAddress(),
+    await registry.getAddress(),
+    await settlement.getAddress(),
+    30 // 0.3% fee
+  );
+  await amm.waitForDeployment();
+  console.log("AMM deployed to:", await amm.getAddress());
+
+  // 6. Deploy SecuritiesToken
   const SecuritiesToken = await hre.ethers.getContractFactory("SecuritiesToken");
   const securitiesToken = await SecuritiesToken.deploy(
     "TestSecurity",
@@ -47,7 +58,7 @@ async function main() {
   await securitiesToken.waitForDeployment();
   console.log("SecuritiesToken deployed to:", await securitiesToken.getAddress());
 
-  // 6. Deploy CashToken
+  // 7. Deploy CashToken
   const CashToken = await hre.ethers.getContractFactory("CashToken");
   const cashToken = await CashToken.deploy(
     "TokenizedEUR",
@@ -57,7 +68,7 @@ async function main() {
   await cashToken.waitForDeployment();
   console.log("CashToken deployed to:", await cashToken.getAddress());
 
-  // 7. Register both tokens in Registry
+  // 8. Register both tokens in Registry
   const ERC20_TYPE = hre.ethers.encodeBytes32String("ERC20");
   await registry.registerAsset(
     await securitiesToken.getAddress(),
@@ -78,6 +89,7 @@ async function main() {
   console.log("Registry:", await registry.getAddress());
   console.log("Settlement:", await settlement.getAddress());
   console.log("OrderBook:", await orderBook.getAddress());
+  console.log("AMM:", await amm.getAddress());
   console.log("SecuritiesToken:", await securitiesToken.getAddress());
   console.log("CashToken:", await cashToken.getAddress());
 
@@ -89,6 +101,7 @@ async function main() {
       Registry: await registry.getAddress(),
       Settlement: await settlement.getAddress(),
       OrderBook: await orderBook.getAddress(),
+      AMM: await amm.getAddress(),
       SecuritiesToken: await securitiesToken.getAddress(),
       CashToken: await cashToken.getAddress(),
     },
