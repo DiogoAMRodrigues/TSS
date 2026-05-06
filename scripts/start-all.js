@@ -197,18 +197,7 @@ async function main() {
 
     // Step 3: Deploy smart contracts
     console.log('📦 Deploying smart contracts...');
-    try {
-      execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
-    } catch (deployErr) {
-      // Node.js 23+/24+ on Windows has a known libuv assertion bug that causes
-      // a non-zero exit code even when the script completes successfully.
-      // Check if deployment actually succeeded by verifying the output file exists.
-      const deploymentsCheck = path.join(__dirname, '..', 'deployments', 'besu.json');
-      if (!fs.existsSync(deploymentsCheck)) {
-        throw new Error('Contract deployment failed: ' + deployErr.message);
-      }
-      console.log('⚠️  Deploy process exited with assertion warning (Node.js Windows bug - ignorable)');
-    }
+    execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
     console.log('✓ Contracts deployed\n');
 
     // Step 4: Write frontend .env with deployed addresses
