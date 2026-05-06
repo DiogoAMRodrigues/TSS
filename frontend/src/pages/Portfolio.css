@@ -1,0 +1,359 @@
+.portfolio-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 2rem 1rem;
+}
+
+.portfolio-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.portfolio-container h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2rem;
+}
+
+.portfolio-container h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+/* Holdings Section */
+.holdings-section {
+  margin-bottom: 3rem;
+}
+
+.holdings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.holdings-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.holdings-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.holdings-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.holdings-card .card-header h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0;
+  color: #0066cc;
+}
+
+.percentage {
+  background-color: rgba(0, 102, 204, 0.1);
+  color: #0066cc;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.holdings-card .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.holdings-card .balance {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #333;
+  word-break: break-word;
+}
+
+.holdings-card .token-name {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Allocation Bar */
+.allocation-bar {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 1.5rem;
+}
+
+.bar-container {
+  display: flex;
+  height: 30px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  background-color: #f0f0f0;
+}
+
+.bar-segment {
+  transition: width 0.3s ease;
+}
+
+.cash-segment {
+  background-color: #0066cc;
+}
+
+.securities-segment {
+  background-color: #00cc99;
+}
+
+.bar-legend {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: #666;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.cash-color {
+  background-color: #0066cc;
+}
+
+.securities-color {
+  background-color: #00cc99;
+}
+
+/* Trade History Section */
+.trade-history-section {
+  margin-bottom: 2rem;
+}
+
+.no-trades {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: #666;
+}
+
+.no-trades p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trades-table {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.trades-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.trades-table thead {
+  background-color: #f9f9f9;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.trades-table th {
+  padding: 1rem 1.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.trades-table td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.trades-table tbody tr:hover {
+  background-color: #fafafa;
+}
+
+.direction {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.direction.buy {
+  background-color: rgba(0, 204, 153, 0.1);
+  color: #00cc99;
+}
+
+.direction.sell {
+  background-color: rgba(255, 102, 102, 0.1);
+  color: #ff6666;
+}
+
+.status {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.status.completed {
+  background-color: rgba(0, 204, 153, 0.1);
+  color: #00cc99;
+}
+
+.status.pending {
+  background-color: rgba(255, 153, 0, 0.1);
+  color: #ff9900;
+}
+
+.status.failed {
+  background-color: rgba(255, 102, 102, 0.1);
+  color: #ff6666;
+}
+
+/* Wallet Info */
+.wallet-info {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 1rem 1.5rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.wallet-info p {
+  margin: 0;
+}
+
+.wallet-info strong {
+  color: #333;
+}
+
+/* Empty State */
+.empty-state {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: #666;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* Error Message */
+.error-message {
+  background-color: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  color: #c33;
+}
+
+.error-message p {
+  margin: 0;
+}
+
+/* Loading */
+.loading {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: #666;
+}
+
+.loading p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .portfolio-page {
+    padding: 1rem;
+  }
+
+  .portfolio-container h1 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .portfolio-container h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+  }
+
+  .holdings-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .bar-legend {
+    gap: 1rem;
+  }
+
+  .trades-table th,
+  .trades-table td {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .trades-table {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .holdings-card .balance {
+    font-size: 1.3rem;
+  }
+
+  .bar-legend {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .trades-table th,
+  .trades-table td {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+}

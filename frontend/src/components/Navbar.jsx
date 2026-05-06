@@ -18,7 +18,11 @@ export function Navbar() {
         </Link>
 
         <div className="navbar-links">
-          <Link to="/" className="nav-link">User</Link>
+          <Link to="/" className="nav-link">Dashboard</Link>
+          <Link to="/amm" className="nav-link">AMM</Link>
+          <Link to="/orderbook" className="nav-link">Order Book</Link>
+          <Link to="/portfolio" className="nav-link">Portfolio</Link>
+          <Link to="/kyc" className="nav-link">KYC</Link>
           <Link to="/admin" className="nav-link">Admin</Link>
         </div>
 
