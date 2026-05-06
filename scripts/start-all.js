@@ -225,7 +225,6 @@ async function main() {
 
     // Step 4: Write frontend .env with deployed addresses and update middleware Identity address
     console.log('📝 Configuring environments...');
-    const deploymentsPath = path.join(__dirname, '..', 'deployments', 'besu.json');
     const deployments = JSON.parse(fs.readFileSync(deploymentsPath, 'utf8'));
     const c = deployments.contracts;
 
