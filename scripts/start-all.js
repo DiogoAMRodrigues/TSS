@@ -200,16 +200,44 @@ async function main() {
     execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
     console.log('✓ Contracts deployed\n');
 
-    // Step 4: Write frontend .env with deployed addresses
-    console.log('📝 Configuring frontend environment...');
+    // Step 4: Write frontend .env with deployed addresses and update middleware Identity address
+    console.log('📝 Configuring environments...');
     const deploymentsPath = path.join(__dirname, '..', 'deployments', 'besu.json');
     const deployments = JSON.parse(fs.readFileSync(deploymentsPath, 'utf8'));
     const c = deployments.contracts;
 
+    // Read middleware .env to extract the operator API key
+    const middlewareEnvPath = path.join(__dirname, '..', 'middleware', '.env');
+    let operatorApiKey = 'operator-key'; // default from .env.example
+    if (fs.existsSync(middlewareEnvPath)) {
+      const mwEnv = fs.readFileSync(middlewareEnvPath, 'utf8');
+      // Extract operator key from MIDDLEWARE_API_KEYS (format: key:ROLE;key2:ROLE)
+      const apiKeysMatch = mwEnv.match(/MIDDLEWARE_API_KEYS=([^\n]*)/);
+      if (apiKeysMatch) {
+        const pairs = apiKeysMatch[1].split(';');
+        for (const pair of pairs) {
+          const [key, role] = pair.split(':');
+          if (role && role.toUpperCase().includes('OPERATOR')) {
+            operatorApiKey = key;
+            break;
+          }
+        }
+      }
+      // Update IDENTITY_ADDRESS in middleware .env with deployed address
+      const updatedMwEnv = mwEnv.replace(
+        /IDENTITY_ADDRESS=.*/,
+        `IDENTITY_ADDRESS=${c.Identity}`
+      );
+      if (updatedMwEnv !== mwEnv) {
+        fs.writeFileSync(middlewareEnvPath, updatedMwEnv);
+        console.log('  ✓ Updated middleware IDENTITY_ADDRESS');
+      }
+    }
+
     const frontendEnvPath = path.join(__dirname, '..', 'frontend', '.env');
     const frontendEnv = [
       'VITE_API_URL=http://localhost:3000',
-      `VITE_API_KEY=${process.env.VITE_API_KEY || 'operator-dev-key'}`,
+      `VITE_API_KEY=${operatorApiKey}`,
       `VITE_CASH_TOKEN_ADDRESS=${c.CashToken}`,
       `VITE_SECURITIES_TOKEN_ADDRESS=${c.SecuritiesToken}`,
       `VITE_ORDERBOOK_ADDRESS=${c.OrderBook}`,
@@ -219,7 +247,7 @@ async function main() {
       'VITE_DEBUG=false',
     ].join('\n');
     fs.writeFileSync(frontendEnvPath, frontendEnv + '\n');
-    console.log('✓ Frontend .env configured with contract addresses\n');
+    console.log('  ✓ Frontend .env configured with contract addresses\n');
 
     // Step 5: Start middleware
     console.log('📦 Starting middleware...');
