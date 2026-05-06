@@ -104,7 +104,7 @@ export function Portfolio() {
           topics: [
             '0x' + Buffer.from('OrderSubmitted(address,uint256,uint8,uint256,uint256,uint256)'.split('(')[0]).toString('hex').padStart(64, '0')
           ],
-          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 5000),
+          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 1024),
           toBlock: 'latest'
         });
 
@@ -114,7 +114,7 @@ export function Portfolio() {
           topics: [
             '0x' + Buffer.from('OrderSubmitted(address,uint256,uint8,uint256,uint256,uint256)'.split('(')[0]).toString('hex').padStart(64, '0')
           ],
-          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 5000),
+          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 1024),
           toBlock: 'latest'
         });
 

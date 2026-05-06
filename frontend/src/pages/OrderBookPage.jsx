@@ -75,13 +75,15 @@ export function OrderBookPage() {
     try {
       setBookLoading(true);
       const contract = new Contract(orderbookAddress, ORDERBOOK_ABI, provider);
+      const currentBlock = await provider.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 1024);
 
       // Get all OrderSubmitted events
       const submitFilter = contract.filters.OrderSubmitted();
       const submitEvents = await provider.getLogs({
         address: orderbookAddress,
         topics: submitFilter.topics,
-        fromBlock: 0,
+        fromBlock,
       });
 
       // Get all OrderCancelled events
@@ -89,7 +91,7 @@ export function OrderBookPage() {
       const cancelEvents = await provider.getLogs({
         address: orderbookAddress,
         topics: cancelFilter.topics,
-        fromBlock: 0,
+        fromBlock,
       });
 
       // Get all OrderMatched events
@@ -97,7 +99,7 @@ export function OrderBookPage() {
       const matchEvents = await provider.getLogs({
         address: orderbookAddress,
         topics: matchFilter.topics,
-        fromBlock: 0,
+        fromBlock,
       });
 
       // Parse events
