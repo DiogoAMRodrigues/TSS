@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Contract, formatUnits, parseUnits, ZeroAddress } from 'ethers';
+import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { api } from '../services/api';
 import './AMMPage.css';
@@ -347,7 +348,7 @@ export default function AMMPage() {
 
         {!kycApproved && isConnected && (
           <div className="kyc-warning">
-            ⚠️ KYC verification required before trading. <a href="/kyc">Complete KYC</a>
+            ⚠️ KYC verification required before trading. <Link to="/kyc">Complete KYC</Link>
           </div>
         )}
 

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useState, useEffect, useCallback } from 'react';
 import { Contract, formatUnits, parseUnits } from 'ethers';
+import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { api } from '../services/api';
 import './OrderBookPage.css';
@@ -376,7 +377,7 @@ export function OrderBookPage() {
 
         {!kycApproved && isConnected && (
           <div className="kyc-warning">
-            ⚠️ KYC verification required before trading. <a href="/kyc">Complete KYC</a>
+            ⚠️ KYC verification required before trading. <Link to="/kyc">Complete KYC</Link>
           </div>
         )}
 
