@@ -195,10 +195,33 @@ async function main() {
     await pollBesuRPC(BESU_TIMEOUT);
     console.log('✓ Besu network running on :8545\n');
 
-    // Step 3: Deploy smart contracts
-    console.log('📦 Deploying smart contracts...');
-    execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
-    console.log('✓ Contracts deployed\n');
+    // Step 3: Deploy smart contracts (skip if already deployed and valid)
+    const deploymentsPath = path.join(__dirname, '..', 'deployments', 'besu.json');
+    let needsDeploy = true;
+
+    if (fs.existsSync(deploymentsPath)) {
+      // Check if existing deployment is still valid (contracts have code on-chain)
+      try {
+        const existing = JSON.parse(fs.readFileSync(deploymentsPath, 'utf8'));
+        const checkAddr = existing.contracts.Identity;
+        const checkResult = execSync(
+          `npx hardhat run --network besu scripts/check-deployment.js`,
+          { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        if (checkResult.trim() === 'VALID') {
+          needsDeploy = false;
+          console.log('✓ Existing deployment still valid, skipping redeploy\n');
+        }
+      } catch {
+        // If check fails, redeploy
+      }
+    }
+
+    if (needsDeploy) {
+      console.log('📦 Deploying smart contracts...');
+      execSync('npx hardhat run scripts/deploy.js --network besu', { stdio: 'inherit' });
+      console.log('✓ Contracts deployed\n');
+    }
 
     // Step 4: Write frontend .env with deployed addresses and update middleware Identity address
     console.log('📝 Configuring environments...');
