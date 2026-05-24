@@ -45,3 +45,13 @@ middleware/data/
 
 # Bun
 bun.lock
+
+# Thesis docs
+PIC_old.pdf
+
+# Thesis working folder
+zTESE/
+
+# AI-generated project docs (local only)
+PROJECT_OVERVIEW.md
+QUICK_REFERENCE.md
