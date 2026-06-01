@@ -1,126 +1,169 @@
 #!/usr/bin/env node
 /**
- * Deploy local repo to the INESC VM and restart middleware.
+ * One-shot orchestrator: bring the WHOLE eIDAS stack up so you can hit
+ * https://tss.dpss.inesc-id.pt/ from a real browser and authenticate with
+ * Cartão de Cidadão / Chave Móvel Digital.
  *
- * The VM has no git — sync is via `scp -r` of the relevant project paths.
- * Per CLOUDTM_DEPLOYMENT_RUNBOOK: copy middleware/, scripts/, artifacts/,
- * package.json, package-lock.json into ~ on the VM. .env and certs live
- * on the VM only (not synced).
+ * What it does (in order, mirrors CLOUDTM_DEPLOYMENT_RUNBOOK):
  *
- * Steps:
- *   1. Pre-flight: confirm local repo is clean and pushed (audit trail only;
- *      the actual sync is from local files, not git).
- *   2. scp -r: middleware/, scripts/, artifacts/, package.json, package-lock.json -> VM:~/
- *   3. ssh: install deps if package-lock.json indicates change.
- *   4. ssh: kill running middleware + relaunch from ~ (so .env relative paths resolve).
- *   5. Poll public /health endpoint until ready (or timeout).
+ *   LAPTOP:
+ *     1. Pre-flight: git working tree clean + HEAD == origin/main.
+ *     2. docker compose up -d           (besu 4-node IBFT on :8545)
+ *     3. Wait for besu RPC.
+ *     4. Deploy contracts if needed     (writes deployments/besu.json)
+ *     5. Patch middleware/.env locally  (IDENTITY_ADDRESS=<deployed>,
+ *                                        EIDAS_PROVIDER=real,
+ *                                        RPC_URL=http://127.0.0.1:8545)
+ *     6. Spawn reverse SSH tunnel in a NEW terminal window:
+ *           ssh -N -R 8545:127.0.0.1:8545 ist1112192@10.16.144.70
+ *        (so the VM's middleware can reach laptop besu via 127.0.0.1:8545)
+ *
+ *   VM (single ssh round-trip = 1 password pair):
+ *     7. scp -r middleware/, artifacts/, package.json, package-lock.json -> ~/
+ *     8. ssh: npm install if lockfile changed; kill old middleware; relaunch.
+ *     9. Poll https://tss.dpss.inesc-id.pt/health until 2xx.
+ *
+ * After this:
+ *   - Open https://tss.dpss.inesc-id.pt in a browser on any device.
+ *   - Drive the KYC + eIDAS flow with real CC/CMD via AMA preprod.
+ *   - Whitelisting hits laptop besu through the reverse tunnel.
+ *
+ * Password prompts:
+ *   - 1× scp = 2 prompts (cloudtm jump + VM)
+ *   - 1× ssh = 2 prompts (cloudtm jump + VM)
+ *   - 1× tunnel ssh in new window = 2 prompts
+ *   = 6 total. Acceptable.
  *
  * Usage:
- *   node scripts/deploy-vm.js                  # full deploy
- *   node scripts/deploy-vm.js --skip-sync      # don't scp, just restart
- *   node scripts/deploy-vm.js --skip-install   # skip npm install even if lockfile changed
- *   node scripts/deploy-vm.js --no-verify-clean # bypass clean-tree check
- *
- * NOTE: Each ssh/scp call needs 2 password prompts (cloudtm jump, then VM).
- * Full deploy = 1 scp + 1 ssh = 2 password-pairs total.
- *
- * Env overrides: see scripts/vm-config.js
+ *   node scripts/deploy-vm.js                 # full deploy
+ *   node scripts/deploy-vm.js --skip-local    # VM-only (assumes besu+tunnel already up)
+ *   node scripts/deploy-vm.js --skip-sync     # don't scp
+ *   node scripts/deploy-vm.js --skip-install  # skip npm install on VM
+ *   node scripts/deploy-vm.js --skip-tunnel   # don't open a new tunnel window
+ *   node scripts/deploy-vm.js --skip-deploy   # don't redeploy contracts even if invalid
+ *   node scripts/deploy-vm.js --no-verify-clean
  */
 
 "use strict";
 
-const { spawn, execSync } = require("child_process");
+const { spawn, spawnSync, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const { URL } = require("url");
-const { cfg, sshArgs, scpArgs, describe } = require("./vm-config");
+const { cfg, sshArgs, scpArgs, sshTarget, describe } = require("./vm-config");
 
 const args = process.argv.slice(2);
-const SKIP_SYNC = args.includes("--skip-sync") || args.includes("--skip-pull");
-const SKIP_INSTALL = args.includes("--skip-install");
-const NO_VERIFY_CLEAN = args.includes("--no-verify-clean");
+const flag = (n) => args.includes(n);
+const SKIP_LOCAL = flag("--skip-local");
+const SKIP_SYNC = flag("--skip-sync");
+const SKIP_INSTALL = flag("--skip-install");
+const SKIP_TUNNEL = flag("--skip-tunnel");
+const SKIP_DEPLOY = flag("--skip-deploy");
+const NO_VERIFY_CLEAN = flag("--no-verify-clean");
 
-// Repo root = parent of scripts/
 const REPO_ROOT = path.resolve(__dirname, "..");
+const SYNC_PATHS = ["middleware", "artifacts", "package.json", "package-lock.json"];
 
-// Paths to sync (relative to REPO_ROOT). Matches CLOUDTM_DEPLOYMENT_RUNBOOK
-// step 3 verbatim: middleware/, artifacts/, package.json, package-lock.json -> ~/
-const SYNC_PATHS = [
-  "middleware",
-  "artifacts",
-  "package.json",
-  "package-lock.json",
-];
-
-// nvm prefix for non-interactive ssh: .bashrc isn't sourced, so node/npm
-// (installed via nvm per runbook step 5) aren't on PATH. Source nvm.sh first.
+// nvm prefix: non-interactive ssh skips .bashrc, so node/npm aren't on PATH.
 const NVM_PREFIX =
   'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh";';
 
+const LOCAL_BESU_RPC = "http://127.0.0.1:8545";
+
+// ---------- ui ----------------------------------------------------------------
 function fail(msg, err) {
   console.error(`\n[FAIL] ${msg}`);
   if (err) console.error(err.message || err);
   process.exit(1);
 }
-function ok(msg) {
-  console.log(`[ OK ] ${msg}`);
-}
-function step(msg) {
-  console.log(`\n>>> ${msg}`);
-}
+const ok = (m) => console.log(`[ OK ] ${m}`);
+const step = (m) => console.log(`\n>>> ${m}`);
+const warn = (m) => console.warn(`[warn] ${m}`);
 
+// ---------- ssh / scp helpers -------------------------------------------------
 function sshExec(remoteCmd) {
   return new Promise((resolve, reject) => {
-    const finalArgs = sshArgs([remoteCmd]);
-    // Inherit ALL stdio so ssh gets a real TTY for password prompts on Windows.
-    const proc = spawn("ssh", finalArgs, { stdio: "inherit" });
+    const proc = spawn("ssh", sshArgs([remoteCmd]), { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("close", (code) => resolve(code));
-  });
-}
-
-function sshCapture(remoteCmd) {
-  return new Promise((resolve, reject) => {
-    const finalArgs = sshArgs([remoteCmd]);
-    // Inherit stdin + stderr (password prompts), pipe stdout to capture.
-    const proc = spawn("ssh", finalArgs, { stdio: ["inherit", "pipe", "inherit"] });
-    let out = "";
-    proc.stdout.on("data", (d) => (out += d.toString()));
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code === 0) resolve(out);
-      else reject(new Error(`ssh exit ${code}`));
-    });
   });
 }
 
 function scpExec(sources, remoteDest) {
   return new Promise((resolve, reject) => {
-    const finalArgs = scpArgs(sources, remoteDest);
-    const proc = spawn("scp", finalArgs, { stdio: "inherit" });
+    const proc = spawn("scp", scpArgs(sources, remoteDest), { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("close", (code) => resolve(code));
   });
 }
 
+// ---------- besu RPC poll (laptop) -------------------------------------------
+function rpcCall(method, params = []) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: 8545,
+        path: "/",
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        timeout: 4000,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            const j = JSON.parse(data);
+            if (j.error) return reject(new Error(j.error.message || "rpc error"));
+            resolve(j.result);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("rpc timeout"));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function waitForBesu(timeoutMs = 90_000) {
+  const start = Date.now();
+  let lastErr;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const id = await rpcCall("eth_chainId");
+      return id;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw new Error(`besu RPC not ready after ${timeoutMs}ms: ${lastErr?.message || "?"}`);
+}
+
+// ---------- public health poll ------------------------------------------------
 function pollHealth(url, timeoutMs, intervalMs) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const u = new URL(url);
     const lib = u.protocol === "https:" ? https : http;
     const tick = () => {
-      const elapsed = Date.now() - started;
-      if (elapsed > timeoutMs) {
-        return reject(new Error(`health did not respond within ${timeoutMs}ms (last URL ${url})`));
-      }
+      if (Date.now() - started > timeoutMs)
+        return reject(new Error(`health did not respond within ${timeoutMs}ms (${url})`));
       const req = lib.get(url, { timeout: 5000 }, (res) => {
         res.on("data", () => {});
         res.on("end", () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            return resolve();
-          }
+          if (res.statusCode >= 200 && res.statusCode < 300) return resolve();
           setTimeout(tick, intervalMs);
         });
       });
@@ -134,6 +177,7 @@ function pollHealth(url, timeoutMs, intervalMs) {
   });
 }
 
+// ---------- pre-flight --------------------------------------------------------
 function preflight() {
   step("Pre-flight: local git state");
   if (NO_VERIFY_CLEAN) {
@@ -147,69 +191,197 @@ function preflight() {
     fail("could not run `git status` (are you in a git repo?)", err);
   }
   if (status.trim()) {
-    console.error("\nUncommitted changes detected:\n" + status);
-    fail(
-      "refusing to deploy with a dirty working tree. " +
-        "Commit + push first, or pass --no-verify-clean."
-    );
+    console.error("\nUncommitted changes:\n" + status);
+    fail("dirty working tree. Commit + push, or pass --no-verify-clean.");
   }
   ok("working tree clean");
 
   try {
     execSync("git fetch origin", { stdio: "ignore", cwd: REPO_ROOT });
-  } catch (err) {
-    console.warn("[warn] git fetch failed (offline?), continuing");
-  }
-  try {
     const local = execSync("git rev-parse @", { encoding: "utf8", cwd: REPO_ROOT }).trim();
     const remote = execSync("git rev-parse @{u}", { encoding: "utf8", cwd: REPO_ROOT }).trim();
     if (local !== remote) {
-      fail(
-        `local HEAD (${local.slice(0, 7)}) != upstream (${remote.slice(0, 7)}). ` +
-          "Push your commits before deploying, or pass --no-verify-clean."
-      );
+      fail(`local HEAD ${local.slice(0, 7)} != upstream ${remote.slice(0, 7)}. Push first or --no-verify-clean.`);
     }
     ok(`HEAD ${local.slice(0, 7)} == origin/main`);
   } catch (err) {
-    console.warn("[warn] could not compare HEAD to upstream:", err.message);
+    warn(`could not compare HEAD to upstream: ${err.message}`);
   }
 }
 
+// ---------- local: docker besu -----------------------------------------------
+function dockerComposeUp() {
+  step("docker compose up -d   (laptop besu IBFT 4-node)");
+  // Check docker daemon first
+  try {
+    execSync("docker info", { stdio: "ignore" });
+  } catch {
+    fail("Docker daemon unreachable. Start Docker Desktop and retry.");
+  }
+  try {
+    execSync("docker compose up -d", { stdio: "inherit", cwd: REPO_ROOT });
+  } catch (err) {
+    fail("docker compose up failed", err);
+  }
+  ok("docker compose started");
+}
+
+async function ensureBesu() {
+  step("waiting for besu RPC on 127.0.0.1:8545");
+  const chainId = await waitForBesu();
+  ok(`besu up (chainId=${chainId})`);
+}
+
+// ---------- local: deploy contracts ------------------------------------------
+function contractsAreValid() {
+  const deploymentsPath = path.join(REPO_ROOT, "deployments", "besu.json");
+  if (!fs.existsSync(deploymentsPath)) return false;
+  try {
+    const out = execSync("npx hardhat run --network besu scripts/check-deployment.js", {
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return out.trim().endsWith("VALID");
+  } catch {
+    return false;
+  }
+}
+
+function deployContracts() {
+  step("deploying contracts to local besu");
+  if (SKIP_DEPLOY) {
+    console.log("(--skip-deploy) skipping deploy");
+    return;
+  }
+  if (contractsAreValid()) {
+    ok("existing deployment still valid; skipping");
+    return;
+  }
+  try {
+    execSync("npx hardhat run scripts/deploy.js --network besu", {
+      stdio: "inherit",
+      cwd: REPO_ROOT,
+    });
+  } catch (err) {
+    fail("contract deploy failed", err);
+  }
+  ok("contracts deployed");
+}
+
+// ---------- local: patch middleware/.env -------------------------------------
+function patchMiddlewareEnv() {
+  step("patching middleware/.env locally (IDENTITY_ADDRESS, RPC_URL, EIDAS_PROVIDER=real)");
+  const envPath = path.join(REPO_ROOT, "middleware", ".env");
+  const examplePath = path.join(REPO_ROOT, "middleware", ".env.example");
+  if (!fs.existsSync(envPath)) {
+    if (!fs.existsSync(examplePath)) fail("no middleware/.env or .env.example to seed from");
+    fs.copyFileSync(examplePath, envPath);
+    warn("middleware/.env was missing; seeded from .env.example");
+  }
+
+  const deploymentsPath = path.join(REPO_ROOT, "deployments", "besu.json");
+  if (!fs.existsSync(deploymentsPath))
+    fail("deployments/besu.json missing — contract deploy must run first");
+  const deployments = JSON.parse(fs.readFileSync(deploymentsPath, "utf8"));
+  const identityAddr = deployments.contracts?.Identity;
+  if (!identityAddr) fail("deployments/besu.json missing contracts.Identity");
+
+  let env = fs.readFileSync(envPath, "utf8");
+  const replacements = {
+    IDENTITY_ADDRESS: identityAddr,
+    RPC_URL: LOCAL_BESU_RPC, // VM uses tunnel → 127.0.0.1:8545; laptop direct same value
+    EIDAS_PROVIDER: "real",
+  };
+  for (const [k, v] of Object.entries(replacements)) {
+    const re = new RegExp(`^${k}=.*$`, "m");
+    if (re.test(env)) env = env.replace(re, `${k}=${v}`);
+    else env += `\n${k}=${v}`;
+  }
+  fs.writeFileSync(envPath, env);
+  ok(`IDENTITY_ADDRESS=${identityAddr}`);
+  ok(`RPC_URL=${LOCAL_BESU_RPC}`);
+  ok(`EIDAS_PROVIDER=real`);
+}
+
+// ---------- reverse SSH tunnel (new window) -----------------------------------
+function spawnTunnelWindow() {
+  step("spawning reverse SSH tunnel in a new window  (laptop besu :8545 -> VM :8545)");
+  if (SKIP_TUNNEL) {
+    console.log("(--skip-tunnel) leaving tunnel to caller");
+    return;
+  }
+
+  // Build the ssh argv ourselves (don't reuse sshArgs — we want -N -R, no command).
+  const tunnelArgs = [];
+  if (cfg.sshConfig) tunnelArgs.push("-F", cfg.sshConfig);
+  if (cfg.sshJump) tunnelArgs.push("-J", cfg.sshJump);
+  // Keep tunnel alive across NAT idle; auto-die if peer is gone.
+  tunnelArgs.push(
+    "-N",
+    "-R",
+    "8545:127.0.0.1:8545",
+    "-o",
+    "ServerAliveInterval=30",
+    "-o",
+    "ServerAliveCountMax=3",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    sshTarget()
+  );
+
+  // Quote each arg for cmd.exe inside `start "title" cmd /k ssh ...`
+  const quote = (s) => (/[\s"]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s);
+  const cmdLine = ["ssh", ...tunnelArgs].map(quote).join(" ");
+
+  if (process.platform === "win32") {
+    // `start "title" cmd /k ...` opens a new console window that survives this script.
+    // /k keeps the window open so you can see prompts + tunnel status.
+    const r = spawnSync(
+      "cmd",
+      ["/c", "start", '"TSS reverse SSH tunnel (laptop besu -> VM 8545)"', "cmd", "/k", cmdLine],
+      { stdio: "inherit" }
+    );
+    if (r.status !== 0) fail(`failed to spawn tunnel window (exit ${r.status})`);
+    ok("tunnel window opened — enter the 2 passwords there. Leave it open.");
+    console.log("    (close that window when you're done to drop the tunnel)");
+  } else {
+    // mac/linux fallback: just background it.
+    const proc = spawn("ssh", tunnelArgs, { stdio: "inherit", detached: true });
+    proc.unref();
+    ok("tunnel started in background (PID " + proc.pid + ")");
+  }
+}
+
+// ---------- VM: scp + install + restart --------------------------------------
 function resolveSyncPaths() {
-  const resolved = [];
+  const out = [];
   for (const rel of SYNC_PATHS) {
     const abs = path.join(REPO_ROOT, rel);
     if (!fs.existsSync(abs)) {
-      console.warn(`[warn] skipping missing path: ${rel}`);
+      warn(`skipping missing path: ${rel}`);
       continue;
     }
-    resolved.push(abs);
+    out.push(abs);
   }
-  if (!resolved.length) fail("nothing to sync (no SYNC_PATHS exist locally)");
-  return resolved;
+  if (!out.length) fail("nothing to sync (no SYNC_PATHS exist locally)");
+  return out;
 }
 
-async function main() {
-  console.log("=== TSS VM Deploy ===\n");
-  console.log(describe());
-
-  preflight();
-
-  // 1) sync local files to VM via scp ------------------------------------
+async function syncToVm() {
   if (SKIP_SYNC) {
     console.log("\n(--skip-sync) skipping scp upload");
-  } else {
-    step("scp -r local files to VM:~/");
-    console.log("    paths: " + SYNC_PATHS.join(", "));
-    const sources = resolveSyncPaths();
-    const code = await scpExec(sources, "~/");
-    if (code !== 0) fail(`scp exited with ${code}`);
-    ok("files synced");
+    return;
   }
+  step("scp -r local files -> VM:~/");
+  console.log("    paths: " + SYNC_PATHS.join(", "));
+  const code = await scpExec(resolveSyncPaths(), "~/");
+  if (code !== 0) fail(`scp exited with ${code}`);
+  ok("files synced to VM");
+}
 
-  // 2) install + restart in a SINGLE ssh call (so only one auth round) -----
-  // Each ssh call needs 2 password prompts (cloudtm + VM); keep this to one.
-  step("install (if needed) + restart middleware on VM");
+async function restartMiddlewareOnVm() {
+  step("VM: install deps (if needed) + restart middleware");
 
   const installBlock = SKIP_INSTALL
     ? `echo '(--skip-install) skipping dependency install';`
@@ -221,27 +393,57 @@ async function main() {
       `  echo 'node_modules current; skipping install'; ` +
       `fi;`;
 
+  // Cleaner restart than the prior setsid+&& chain (which exited -1):
+  //   - kill any current middleware
+  //   - launch with nohup, fully detached, log to file
+  //   - sleep + verify pid alive; if not, dump the log and fail
+  // Note: trailing `; true` after pkill prevents non-zero from killing the chain.
   const restartBlock =
-    // Stop any running middleware
-    `pkill -f '${cfg.vmProcessPattern}' || true; sleep 1; ` +
-    `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
-    `pkill -9 -f '${cfg.vmProcessPattern}' || true; fi; ` +
-    // Start from ~ so .env relative paths resolve
     `cd ${cfg.vmRunDir} && ` +
-    `: > middleware.log && ` +
-    `setsid ${cfg.vmStartCmd} </dev/null && ` +
-    `sleep 1 && ` +
+    `pkill -f '${cfg.vmProcessPattern}' 2>/dev/null; ` +
+    `sleep 1; ` +
+    `pkill -9 -f '${cfg.vmProcessPattern}' 2>/dev/null; ` +
+    `: > middleware.log; ` +
+    `nohup ${cfg.vmStartCmd.replace(/ &$/, "")} </dev/null >middleware.log 2>&1 & ` +
+    `disown; ` +
+    `sleep 2; ` +
     `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
-    `echo 'middleware running'; ` +
-    `else echo 'middleware did NOT start; tail of log:'; tail -n 50 middleware.log; exit 1; fi`;
+    `  echo 'middleware running'; ` +
+    `else ` +
+    `  echo 'middleware did NOT start; tail of log:'; ` +
+    `  tail -n 80 middleware.log; ` +
+    `  exit 1; ` +
+    `fi`;
 
-  // Wrap with nvm so npm/node are on PATH in non-interactive ssh.
   const fullCmd = `${NVM_PREFIX} ${installBlock} ${restartBlock}`;
   const code = await sshExec(fullCmd);
   if (code !== 0) fail(`install+restart exited with ${code}`);
   ok("middleware running on VM");
+}
 
-  // 3) poll public health -------------------------------------------------
+// ---------- main --------------------------------------------------------------
+async function main() {
+  console.log("=== TSS one-shot deploy ===\n");
+  console.log(describe());
+
+  preflight();
+
+  // ---------- LOCAL ----------
+  if (!SKIP_LOCAL) {
+    dockerComposeUp();
+    await ensureBesu();
+    deployContracts();
+    patchMiddlewareEnv();
+    spawnTunnelWindow();
+  } else {
+    console.log("\n(--skip-local) skipping docker, deploy, .env patch, tunnel");
+  }
+
+  // ---------- VM ----------
+  await syncToVm();
+  await restartMiddlewareOnVm();
+
+  // ---------- VERIFY ----------
   step(`polling ${cfg.publicHealthUrl}`);
   try {
     await pollHealth(cfg.publicHealthUrl, cfg.healthTimeoutMs, cfg.healthIntervalMs);
@@ -251,13 +453,17 @@ async function main() {
     try {
       console.error("\n--- tail of middleware.log on VM ---");
       await sshExec(`tail -n 80 ${cfg.vmLogPath}`);
-    } catch (_) {}
+    } catch {}
     process.exit(1);
   }
 
-  console.log("\n=== Deploy complete ===");
+  console.log("\n=== STACK UP ===");
   console.log(`Public:  ${cfg.publicBaseUrl}`);
   console.log(`Health:  ${cfg.publicHealthUrl}`);
+  console.log("");
+  console.log("Now drive a real-CC KYC flow against the public URL.");
+  console.log("Tunnel window must stay open — closing it kills besu access.");
+  console.log("");
   console.log(`Logs:    npm run vm:logs`);
   console.log(`Restart: npm run vm:restart`);
 }
