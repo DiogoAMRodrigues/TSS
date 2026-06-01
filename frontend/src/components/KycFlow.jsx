@@ -177,14 +177,16 @@ export function KycFlow({ onVerificationComplete }) {
               {loading ? 'Working...' : 'Continue with Cartão de Cidadão (eIDAS)'}
             </button>
 
-            <button
-              className="btn btn-secondary btn-large"
-              onClick={handleSignChallenge}
-              disabled={loading}
-              title="Simulated KYC — for development only"
-            >
-              {loading ? 'Signing...' : 'Use simulated KYC (dev only)'}
-            </button>
+            {import.meta.env.VITE_ALLOW_SIMULATED_KYC === 'true' && (
+              <button
+                className="btn btn-secondary btn-large"
+                onClick={handleSignChallenge}
+                disabled={loading}
+                title="Simulated KYC — for development only"
+              >
+                {loading ? 'Signing...' : 'Use simulated KYC (dev only)'}
+              </button>
+            )}
 
             <button
               className="btn btn-secondary"
