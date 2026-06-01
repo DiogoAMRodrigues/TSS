@@ -49,7 +49,12 @@ function createAuth(options = {}) {
         return next();
       }
 
-      const apiKey = req.header("x-api-key");
+      // Accept API key from header (preferred) OR ?apiKey= query param.
+      // The query-param fallback exists for browser-driven GET routes (e.g.
+      // /api/kyc/eidas/start) where the user can't set custom headers from
+      // the URL bar. Defense-in-depth still holds: those routes also require
+      // a wallet-signed challenge as the real auth gate.
+      const apiKey = req.header("x-api-key") || req.query?.apiKey;
       if (!apiKey) {
         return res.status(401).json({ error: "Missing x-api-key" });
       }
