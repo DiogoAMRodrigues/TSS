@@ -160,9 +160,13 @@ class RealEidasProvider {
     const attrs = this.config.requestedAttributes
       .map(
         (name) =>
-          `<fa:RequestedAttribute xmlns:fa="${FA_NS}" Name="${ATTR_URN[name]}" NameFormat="${ATTR_FORMAT}" isRequired="true" />`
+          `<fa:RequestedAttribute Name="${ATTR_URN[name]}" NameFormat="${ATTR_FORMAT}" isRequired="true" />`
       )
       .join("");
+    const extensions =
+      `<samlp:Extensions>` +
+      `<fa:RequestedAttributes xmlns:fa="${FA_NS}">${attrs}</fa:RequestedAttributes>` +
+      `</samlp:Extensions>`;
 
     // Order of children matters in SAML: Issuer → Signature (after sign) → Extensions → NameIDPolicy → ...
     // We build without <Signature/>, then xml-crypto inserts it between Issuer and Extensions
@@ -175,7 +179,7 @@ class RealEidasProvider {
       `AssertionConsumerServiceURL="${this.config.spAcsUrl}" ` +
       `ProviderName="${this._xmlEscape(this.config.spProviderName)}">` +
       `<saml:Issuer>${this.config.spEntityId}</saml:Issuer>` +
-      `<samlp:Extensions>${attrs}</samlp:Extensions>` +
+      extensions +
       `<samlp:NameIDPolicy Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified" AllowCreate="true" />` +
       `</samlp:AuthnRequest>`;
 
