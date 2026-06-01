@@ -55,8 +55,7 @@ function sshArgs(extra = []) {
   if (cfg.sshJump) {
     args.push("-J", cfg.sshJump);
   }
-  // Quiet host-key prompts in scripted contexts; user can override via -o BatchMode=yes if desired.
-  args.push("-o", "ConnectTimeout=15");
+  // No ConnectTimeout: interactive password prompts on jump + VM can take >15s.
   args.push(...extra);
   args.push(sshTarget());
   return args;
