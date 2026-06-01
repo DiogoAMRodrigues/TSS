@@ -56,8 +56,9 @@ function sshArgs(extra = []) {
     args.push("-J", cfg.sshJump);
   }
   // No ConnectTimeout: interactive password prompts on jump + VM can take >15s.
-  args.push(...extra);
+  // Target MUST come before the remote command (ssh syntax: ssh [opts] host [cmd...]).
   args.push(sshTarget());
+  args.push(...extra);
   return args;
 }
 
