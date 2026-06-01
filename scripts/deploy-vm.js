@@ -382,32 +382,36 @@ async function syncToVm() {
 async function restartMiddlewareOnVm() {
   step("VM: install deps (if needed) + restart middleware");
 
+  // Install only if node_modules is missing. scp resets package-lock.json mtime
+  // every run, so the older `-nt` check triggered an install every time.
   const installBlock = SKIP_INSTALL
     ? `echo '(--skip-install) skipping dependency install';`
     : `cd ${cfg.vmRepoDir} && ` +
-      `if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then ` +
-      `  echo '>>> npm install (lockfile newer or node_modules missing)'; ` +
+      `if [ ! -d node_modules ]; then ` +
+      `  echo '>>> npm install (node_modules missing)'; ` +
       `  npm install --omit=dev || exit 1; ` +
       `else ` +
-      `  echo 'node_modules current; skipping install'; ` +
+      `  echo 'node_modules present; skipping install'; ` +
       `fi;`;
 
-  // Cleaner restart than the prior setsid+&& chain (which exited -1):
-  //   - kill any current middleware
-  //   - launch with nohup, fully detached, log to file
-  //   - sleep + verify pid alive; if not, dump the log and fail
-  // Note: trailing `; true` after pkill prevents non-zero from killing the chain.
+  // Port-based kill instead of `pkill -f <pattern>`:
+  //   - pkill -f matches the running ssh-driven bash itself (its argv contains
+  //     the pattern string), so the session self-killed (exit -1 / 4294967295).
+  //   - fuser -k targets the listening sockets directly.
+  // We also clear :8545 in case an orphan reverse tunnel from a prior run is
+  // still holding the remote forward port (otherwise the new tunnel fails with
+  // "remote port forwarding failed for listen port 8545").
   const restartBlock =
     `cd ${cfg.vmRunDir} && ` +
-    `pkill -f '${cfg.vmProcessPattern}' 2>/dev/null; ` +
+    `fuser -k 8545/tcp 2>/dev/null; ` +
+    `fuser -k 3000/tcp 2>/dev/null; ` +
     `sleep 1; ` +
-    `pkill -9 -f '${cfg.vmProcessPattern}' 2>/dev/null; ` +
     `: > middleware.log; ` +
     `nohup ${cfg.vmStartCmd.replace(/ &$/, "")} </dev/null >middleware.log 2>&1 & ` +
     `disown; ` +
     `sleep 2; ` +
-    `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
-    `  echo 'middleware running'; ` +
+    `if (ss -tln 2>/dev/null || netstat -tln) | grep -q ':3000 '; then ` +
+    `  echo 'middleware listening on :3000'; ` +
     `else ` +
     `  echo 'middleware did NOT start; tail of log:'; ` +
     `  tail -n 80 middleware.log; ` +
@@ -427,20 +431,29 @@ async function main() {
 
   preflight();
 
-  // ---------- LOCAL ----------
+  // ---------- LOCAL prep ----------
   if (!SKIP_LOCAL) {
     dockerComposeUp();
     await ensureBesu();
     deployContracts();
     patchMiddlewareEnv();
-    spawnTunnelWindow();
   } else {
-    console.log("\n(--skip-local) skipping docker, deploy, .env patch, tunnel");
+    console.log("\n(--skip-local) skipping docker, deploy, .env patch");
   }
 
   // ---------- VM ----------
+  // Restart middleware BEFORE opening the tunnel. The restart block also frees
+  // VM port 8545 (orphan reverse-forward from a prior run), otherwise the new
+  // tunnel fails with "remote port forwarding failed for listen port 8545".
+  // Middleware uses a lazy JsonRpcProvider — it doesn't need the tunnel to
+  // start, only to serve KYC requests.
   await syncToVm();
   await restartMiddlewareOnVm();
+
+  // ---------- TUNNEL ----------
+  if (!SKIP_LOCAL) {
+    spawnTunnelWindow();
+  }
 
   // ---------- VERIFY ----------
   step(`polling ${cfg.publicHealthUrl}`);
