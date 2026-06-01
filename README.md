@@ -469,11 +469,12 @@ Output written to `scripts/smoke-out/authn-request.xml`. Exits non-zero on failu
 - [x] February - Besu network setup, Hardhat toolchain
 - [x] March - Identity, SecuritiesToken, CashToken, Registry
 - [x] April - OrderBook, Settlement, AMM, end-to-end DvP flow tested
-- [x] May - KYC/eIDAS integration, React frontend
-- [ ] June - Evaluation and performance testing and thesis writeup support
+- [x] May - KYC/eIDAS integration (simulated + real SAML 2.0 to AMA Autenticação.gov), React frontend, VM deployment on INESC DPSS cluster (`https://tss.dpss.inesc-id.pt`)
+- [ ] June - Evaluation, performance testing, paper, thesis writeup
 - [ ] July - Dissertation writeup
 
 ## TODO this month
-- Make the actual Frontend prettier
-- Test the Frontend by hand
-- Figure out how to get a URL working or sth to do a real eIDAS implementation
+- End-to-end testing of the full stack (real eIDAS flow + DvP scenarios)
+- Performance / evaluation measurements for thesis
+- Paper draft
+- Dissertation writeup

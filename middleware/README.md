@@ -1,6 +1,10 @@
-# TSS KYC Middleware (Simulated eIDAS)
+# TSS KYC Middleware (eIDAS)
 
-This middleware simulates an eIDAS/KYC provider, verifies wallet ownership by challenge signature, and writes access-control decisions to `Identity.sol`.
+This middleware handles eIDAS/KYC, verifies wallet ownership by challenge signature, and writes access-control decisions to `Identity.sol`.
+
+It supports two interchangeable providers selected via `EIDAS_PROVIDER`:
+- `simulated` (default) — local stub for development and tests.
+- `real` — SAML 2.0 integration with Portugal's AMA Autenticação.gov preprod IdP. See the root [`README.md`](../README.md#real-eidas--saml-20-to-ama-autenticacaogov) for SAML config, certs, and the VM deployment flow.
 
 ## What it does
 
