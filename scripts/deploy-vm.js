@@ -335,13 +335,12 @@ function spawnTunnelWindow() {
   const cmdLine = ["ssh", ...tunnelArgs].map(quote).join(" ");
 
   if (process.platform === "win32") {
-    // `start "title" cmd /k ...` opens a new console window that survives this script.
-    // /k keeps the window open so you can see prompts + tunnel status.
-    const r = spawnSync(
-      "cmd",
-      ["/c", "start", '"TSS reverse SSH tunnel (laptop besu -> VM 8545)"', "cmd", "/k", cmdLine],
-      { stdio: "inherit" }
-    );
+    // `start "" cmd /k ...` opens a new console window that survives this script.
+    // Empty title MUST be present (start treats first quoted arg as window title).
+    // Use shell:true so cmd parses the whole line — Node's argv quoting otherwise
+    // mangles the nested quotes around the ssh args.
+    const fullLine = `start "" cmd /k ${cmdLine}`;
+    const r = spawnSync(fullLine, { stdio: "inherit", shell: true });
     if (r.status !== 0) fail(`failed to spawn tunnel window (exit ${r.status})`);
     ok("tunnel window opened — enter the 2 passwords there. Leave it open.");
     console.log("    (close that window when you're done to drop the tunnel)");
