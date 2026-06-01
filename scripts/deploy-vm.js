@@ -22,7 +22,7 @@
  *   node scripts/deploy-vm.js --no-verify-clean # bypass clean-tree check
  *
  * NOTE: Each ssh/scp call needs 2 password prompts (cloudtm jump, then VM).
- * Expect ~3 prompt-pairs per full deploy.
+ * Full deploy = 1 scp + 1 ssh = 2 password-pairs total.
  *
  * Env overrides: see scripts/vm-config.js
  */
@@ -45,15 +45,19 @@ const NO_VERIFY_CLEAN = args.includes("--no-verify-clean");
 // Repo root = parent of scripts/
 const REPO_ROOT = path.resolve(__dirname, "..");
 
-// Paths to sync (relative to REPO_ROOT). Matches runbook step 3.
-// .env and middleware/certs/ are intentionally NOT synced — they live on the VM.
+// Paths to sync (relative to REPO_ROOT). Matches CLOUDTM_DEPLOYMENT_RUNBOOK
+// step 3 verbatim: middleware/, artifacts/, package.json, package-lock.json -> ~/
 const SYNC_PATHS = [
   "middleware",
-  "scripts",
   "artifacts",
   "package.json",
   "package-lock.json",
 ];
+
+// nvm prefix for non-interactive ssh: .bashrc isn't sourced, so node/npm
+// (installed via nvm per runbook step 5) aren't on PATH. Source nvm.sh first.
+const NVM_PREFIX =
+  'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh";';
 
 function fail(msg, err) {
   console.error(`\n[FAIL] ${msg}`);
@@ -203,42 +207,26 @@ async function main() {
     ok("files synced");
   }
 
-  // 2) npm install if needed ---------------------------------------------
-  if (!SKIP_INSTALL) {
-    step("checking if npm install is needed on VM");
-    let needsInstall = false;
-    try {
-      const out = await sshCapture(
-        `cd ${cfg.vmRepoDir} && ` +
-          `if [ ! -d node_modules ]; then echo NEEDS; ` +
-          `elif [ package-lock.json -nt node_modules ]; then echo NEEDS; ` +
-          `else echo OK; fi`
-      );
-      needsInstall = out.includes("NEEDS");
-    } catch (err) {
-      console.warn("[warn] could not determine install state, will install anyway");
-      needsInstall = true;
-    }
-    if (needsInstall) {
-      step("npm install on VM");
-      const code = await sshExec(`cd ${cfg.vmRepoDir} && npm install --omit=dev`);
-      if (code !== 0) fail(`npm install exited with ${code}`);
-      ok("dependencies up to date");
-    } else {
-      ok("node_modules current; skipping install");
-    }
-  } else {
-    console.log("\n(--skip-install) skipping dependency install");
-  }
+  // 2) install + restart in a SINGLE ssh call (so only one auth round) -----
+  // Each ssh call needs 2 password prompts (cloudtm + VM); keep this to one.
+  step("install (if needed) + restart middleware on VM");
 
-  // 3) restart middleware (stop + start in ONE ssh call to save passwords)
-  step("restarting middleware on VM");
-  const restartCmd =
-    // Stop
+  const installBlock = SKIP_INSTALL
+    ? `echo '(--skip-install) skipping dependency install';`
+    : `cd ${cfg.vmRepoDir} && ` +
+      `if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then ` +
+      `  echo '>>> npm install (lockfile newer or node_modules missing)'; ` +
+      `  npm install --omit=dev || exit 1; ` +
+      `else ` +
+      `  echo 'node_modules current; skipping install'; ` +
+      `fi;`;
+
+  const restartBlock =
+    // Stop any running middleware
     `pkill -f '${cfg.vmProcessPattern}' || true; sleep 1; ` +
     `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
     `pkill -9 -f '${cfg.vmProcessPattern}' || true; fi; ` +
-    // Start (from ~ so .env relative paths resolve)
+    // Start from ~ so .env relative paths resolve
     `cd ${cfg.vmRunDir} && ` +
     `: > middleware.log && ` +
     `setsid ${cfg.vmStartCmd} </dev/null && ` +
@@ -246,11 +234,14 @@ async function main() {
     `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
     `echo 'middleware running'; ` +
     `else echo 'middleware did NOT start; tail of log:'; tail -n 50 middleware.log; exit 1; fi`;
-  const restartCode = await sshExec(restartCmd);
-  if (restartCode !== 0) fail(`middleware restart failed (exit ${restartCode})`);
+
+  // Wrap with nvm so npm/node are on PATH in non-interactive ssh.
+  const fullCmd = `${NVM_PREFIX} ${installBlock} ${restartBlock}`;
+  const code = await sshExec(fullCmd);
+  if (code !== 0) fail(`install+restart exited with ${code}`);
   ok("middleware running on VM");
 
-  // 4) poll public health -------------------------------------------------
+  // 3) poll public health -------------------------------------------------
   step(`polling ${cfg.publicHealthUrl}`);
   try {
     await pollHealth(cfg.publicHealthUrl, cfg.healthTimeoutMs, cfg.healthIntervalMs);
