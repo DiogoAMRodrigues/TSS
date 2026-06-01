@@ -185,10 +185,17 @@ class RealEidasProvider {
   }
 
   _signRequest(xml, refId) {
+    const certB64 = this.config._spCertB64;
     const sig = new SignedXml({
       privateKey: this.config._spKeyPem,
       signatureAlgorithm: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
       canonicalizationAlgorithm: "http://www.w3.org/2001/10/xml-exc-c14n#",
+      // xml-crypto v6: must pass via constructor (post-hoc assignment is lost).
+      // Emit KeyInfo with our SP cert so AMA can identify which cert signed.
+      getKeyInfoContent: ({ prefix } = {}) => {
+        const p = prefix ? `${prefix}:` : "";
+        return `<${p}X509Data><${p}X509Certificate>${certB64}</${p}X509Certificate></${p}X509Data>`;
+      },
     });
     sig.addReference({
       xpath: `//*[local-name(.)='AuthnRequest']`,
@@ -199,8 +206,6 @@ class RealEidasProvider {
       digestAlgorithm: "http://www.w3.org/2001/04/xmlenc#sha256",
       uri: `#${refId}`,
     });
-    sig.getKeyInfoContent = () =>
-      `<X509Data><X509Certificate>${this.config._spCertB64}</X509Certificate></X509Data>`;
     sig.computeSignature(xml, {
       prefix: "ds",
       location: { reference: `//*[local-name(.)='Issuer']`, action: "after" },
