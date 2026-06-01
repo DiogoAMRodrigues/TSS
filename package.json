@@ -20,7 +20,12 @@
     "test:all:besu": "node scripts/run-all-tests.js besu",
     "middleware:start": "node middleware/src/server.js",
     "middleware:dev": "node --watch middleware/src/server.js",
-    "middleware:prepare-env": "node scripts/prepare-middleware-env.js"
+    "middleware:prepare-env": "node scripts/prepare-middleware-env.js",
+    "smoke:eidas": "node scripts/smoke-eidas.js",
+    "deploy:vm": "node scripts/deploy-vm.js",
+    "vm:check": "node scripts/check-vm.js",
+    "vm:logs": "node scripts/vm-logs.js",
+    "vm:restart": "node scripts/vm-restart.js"
   },
   "keywords": [],
   "author": "",

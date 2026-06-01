@@ -20,7 +20,7 @@ TSS/
 │   └── registry/       # Registry.sol - asset directory
 ├── networkFiles/       # Generated validator keys and genesis (gitignored)
 ├── node1-4/            # Validator node data (keys gitignored)
-├── scripts/            # deploy.js, reset-network.ps1
+├── scripts/            # deploy.js, reset-network.ps1, smoke-eidas.js, deploy-vm.js, vm-*.js
 ├── test/               # Hardhat unit tests
 └── docs/               # Architecture documentation
 ```
@@ -146,9 +146,15 @@ docker compose up
 npx hardhat test --network besu
 ```
 
-## KYC Middleware (Simulated eIDAS)
+## KYC Middleware (eIDAS)
 
-A prototype middleware is available under `middleware/` to simulate eIDAS/KYC and write decisions to `Identity.sol`.
+A middleware under `middleware/` handles eIDAS/KYC and writes decisions to `Identity.sol`.
+It supports two interchangeable providers selected via `EIDAS_PROVIDER`:
+
+- `simulated` (default) — local stub for development and tests.
+- `real` — SAML 2.0 integration with Portugal's **AMA Autenticação.gov** preprod IdP.
+
+See [Real eIDAS (AMA Autenticação.gov)](#real-eidas-ama-autenticacaogov) for the SAML setup.
 
 ### Middleware setup
 1. Deploy contracts:
@@ -261,6 +267,94 @@ Set `VITE_DEBUG=true` in `frontend/.env` and open the browser console (F12) to s
 ### Features
 - **User view**: Connect wallet, start KYC (sign challenge via MetaMask), view status/role/expiry, reverify
 - **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state
+
+## Real eIDAS (AMA Autenticação.gov)
+
+The `real` eIDAS provider speaks SAML 2.0 directly to Portugal's
+Autenticação.gov preprod IdP (`https://preprod.autenticacao.gov.pt/fa/Default.aspx`).
+
+### Flow
+```
+wallet  --POST /api/kyc/request-->  middleware
+wallet  --sign challenge-->         middleware
+wallet  --GET  /api/kyc/eidas/start-->  middleware  --302-->  AMA login (CC + PIN, or CMD)
+AMA     --POST /api/kyc/eidas/callback-->  middleware  --tx-->  Identity.sol
+```
+
+`RelayState` carries the wallet address across the redirect so the middleware can
+bind the AMA-issued attributes to the right address on the callback.
+
+### Required `.env` keys
+```
+EIDAS_PROVIDER=real
+EIDAS_IDP_ENTRY_POINT=https://preprod.autenticacao.gov.pt/fa/Default.aspx
+EIDAS_SP_ENTITY_ID=https://tss.dpss.inesc-id.pt
+EIDAS_SP_PROVIDER_NAME=TSS - Instituto Superior Tecnico
+EIDAS_SP_ACS_URL=https://tss.dpss.inesc-id.pt/api/kyc/eidas/callback
+EIDAS_SP_SLO_URL=https://tss.dpss.inesc-id.pt/logout
+EIDAS_SP_CERT_PATH=middleware/certs/tss-saml-leaf.crt
+EIDAS_SP_KEY_PATH=middleware/certs/tss-saml.key
+EIDAS_IDP_CERT_PATH=middleware/certs/ama-preprod-ca.crt
+EIDAS_REQUESTED_ATTRIBUTES=NIC,NomeCompleto,NomeProprio,NomeApelido,DataNascimento,CorreioElectronico
+```
+
+`middleware/.env.example` ships the full template. Certs and keys are gitignored.
+
+### Smoke test
+Builds and signs an AuthnRequest locally without contacting AMA, then runs
+structural assertions (signature, embedded cert subject, AMA-specific
+`fa:RequestedAttributes` extension, etc.):
+```bash
+npm run smoke:eidas
+```
+The generated AuthnRequest is written to `scripts/smoke-out/authn-request.xml`
+for inspection. Exits non-zero on any failure.
+
+## VM Deployment (INESC cluster)
+
+The middleware is deployed on the INESC VM (`10.16.144.70`, jump host
+`inesc-headnode`) and exposed publicly at `https://tss.dpss.inesc-id.pt`.
+The repo is cloned at `$HOME` on the VM so middleware launches from `~`
+and `.env` relative paths resolve to `~/middleware/...`.
+
+### One-shot deploy
+From a clean, pushed working tree:
+```bash
+npm run deploy:vm
+```
+Sequence:
+1. Pre-flight: refuse to deploy if the local tree is dirty or local HEAD ≠ `origin/main`.
+2. `ssh git pull --ff-only` on the VM.
+3. `npm install --omit=dev` if `package-lock.json` changed.
+4. Kill any running middleware (`pkill -f 'node middleware/src/server.js'`).
+5. Re-launch via `setsid nohup node middleware/src/server.js`, redirected to `~/middleware.log`.
+6. Poll `https://tss.dpss.inesc-id.pt/health` until 2xx (or print the log tail and exit non-zero).
+
+Flags:
+- `--skip-pull` — restart only, no `git pull`.
+- `--skip-install` — don't run `npm install` even if the lockfile changed.
+- `--no-verify-clean` — bypass the local-clean check (use with care).
+
+### Other VM commands
+```bash
+npm run vm:check          # public /health probe + remote pgrep
+npm run vm:check -- --logs # also print last 50 log lines
+npm run vm:logs           # tail -f middleware.log on VM (Ctrl+C to stop)
+npm run vm:logs 200       # last 200 lines, then follow
+npm run vm:restart        # stop + relaunch middleware (no git pull)
+```
+
+### SSH config
+The scripts default to the cluster SSH config at
+`D:\Main\...\cluster_configuration_ist1112192\config`. Override with:
+```
+set VM_SSH_CONFIG=path\to\config
+set VM_SSH_USER=ist1112192
+set VM_SSH_HOST=10.16.144.70
+set VM_SSH_JUMP=inesc-headnode
+```
+Other overrides (`VM_REPO_DIR`, `VM_RUN_DIR`, `VM_START_CMD`,
+`VM_PUBLIC_HEALTH_URL`, …) live in `scripts/vm-config.js`.
 
 ## Architecture
 4-layer architecture:
