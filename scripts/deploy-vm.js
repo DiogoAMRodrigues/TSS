@@ -53,9 +53,9 @@ function step(msg) {
 function sshExec(remoteCmd, { tag = "vm" } = {}) {
   return new Promise((resolve, reject) => {
     const finalArgs = sshArgs([remoteCmd]);
-    const proc = spawn("ssh", finalArgs, { stdio: ["inherit", "pipe", "pipe"] });
-    proc.stdout.on("data", (d) => process.stdout.write(`[${tag}] ${d}`));
-    proc.stderr.on("data", (d) => process.stderr.write(`[${tag}] ${d}`));
+    // Inherit ALL stdio so ssh gets a real TTY for password prompts on Windows.
+    // (Piping stdout/stderr breaks OpenSSH's interactive auth on win32.)
+    const proc = spawn("ssh", finalArgs, { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("close", (code) => resolve(code));
   });
@@ -67,15 +67,15 @@ function sshExec(remoteCmd, { tag = "vm" } = {}) {
 function sshCapture(remoteCmd) {
   return new Promise((resolve, reject) => {
     const finalArgs = sshArgs([remoteCmd]);
-    const proc = spawn("ssh", finalArgs, { stdio: ["inherit", "pipe", "pipe"] });
+    // Inherit stdin + stderr so password prompts work on Windows.
+    // Pipe stdout so we can capture the command output.
+    const proc = spawn("ssh", finalArgs, { stdio: ["inherit", "pipe", "inherit"] });
     let out = "";
-    let err = "";
     proc.stdout.on("data", (d) => (out += d.toString()));
-    proc.stderr.on("data", (d) => (err += d.toString()));
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0) resolve(out);
-      else reject(new Error(`ssh exit ${code}: ${err.trim()}`));
+      else reject(new Error(`ssh exit ${code}`));
     });
   });
 }
