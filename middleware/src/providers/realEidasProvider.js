@@ -60,11 +60,14 @@ const ATTR_URN = {
 
 function readPemCert(absPath) {
   const raw = fs.readFileSync(absPath, "utf8");
-  // Strip PEM armor + whitespace, return base64 body (xml-crypto wants this in <X509Certificate>)
-  return raw
-    .replace(/-----BEGIN CERTIFICATE-----/g, "")
-    .replace(/-----END CERTIFICATE-----/g, "")
-    .replace(/\s+/g, "");
+  // Extract ONLY the first BEGIN/END CERTIFICATE block; ignore any trailing
+  // openssl human-readable metadata (subject=, issuer=, etc.) that AMA may
+  // have appended to the file.
+  const m = raw.match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
+  if (!m) {
+    throw new Error(`No PEM CERTIFICATE block found in ${absPath}`);
+  }
+  return m[1].replace(/\s+/g, "");
 }
 
 function genId() {

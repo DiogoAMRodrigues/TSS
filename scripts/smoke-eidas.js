@@ -139,6 +139,25 @@ if (Number(x509Count) < 1)
   fail("KeyInfo/X509Data/X509Certificate missing (AMA needs SP cert in sig)");
 ok("SP cert embedded in KeyInfo");
 
+// Decode the embedded cert and verify its subject CN is our SP, not the IdP.
+const embeddedB64 = select(
+  "string(ds:Signature/ds:KeyInfo/ds:X509Data/ds:X509Certificate)",
+  root
+).replace(/\s+/g, "");
+if (!/^[A-Za-z0-9+/=]+$/.test(embeddedB64))
+  fail(`embedded X509Certificate is not clean base64 (length=${embeddedB64.length})`);
+ok("embedded X509Certificate is clean base64 (no metadata bleed)");
+try {
+  const { X509Certificate } = require("crypto");
+  const embeddedDer = Buffer.from(embeddedB64, "base64");
+  const embeddedCert = new X509Certificate(embeddedDer);
+  if (!/CN=tss\.dpss\.inesc-id\.pt/.test(embeddedCert.subject))
+    fail(`embedded cert subject=${embeddedCert.subject}, expected CN=tss.dpss.inesc-id.pt`);
+  ok(`embedded cert subject = ${embeddedCert.subject.replace(/\n/g, " | ")}`);
+} catch (err) {
+  fail(`failed to decode embedded X509Certificate: ${err.message}`);
+}
+
 const extReqAttrs = select(
   "samlp:Extensions/fa:RequestedAttributes/fa:RequestedAttribute",
   root
