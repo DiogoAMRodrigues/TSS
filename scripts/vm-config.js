@@ -12,7 +12,7 @@ const path = require("path");
 const os = require("os");
 
 const DEFAULT_SSH_CONFIG =
-  "D:\\Main\\Documents\\Academic\\IST\\TESE\\project\\cluster_configuration_ist1112192\\config";
+  "D:\\Main\\Documents\\Academic\\IST\\TESE\\cluster_configuration_ist1112192\\config";
 
 const cfg = {
   // SSH plumbing
