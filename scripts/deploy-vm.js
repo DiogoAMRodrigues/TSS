@@ -1,38 +1,59 @@
 #!/usr/bin/env node
 /**
- * Deploy current main branch to the INESC VM and restart middleware.
+ * Deploy local repo to the INESC VM and restart middleware.
+ *
+ * The VM has no git — sync is via `scp -r` of the relevant project paths.
+ * Per CLOUDTM_DEPLOYMENT_RUNBOOK: copy middleware/, scripts/, artifacts/,
+ * package.json, package-lock.json into ~ on the VM. .env and certs live
+ * on the VM only (not synced).
  *
  * Steps:
- *   1. Pre-flight: confirm local repo is clean and pushed to origin/main.
- *   2. ssh: git pull in repo dir on VM.
- *   3. ssh: install deps if package.json or package-lock.json changed.
- *   4. ssh: kill any running middleware process.
- *   5. ssh: nohup-launch middleware from $HOME so .env relative paths resolve.
- *   6. Poll public /health endpoint until ready (or timeout).
+ *   1. Pre-flight: confirm local repo is clean and pushed (audit trail only;
+ *      the actual sync is from local files, not git).
+ *   2. scp -r: middleware/, scripts/, artifacts/, package.json, package-lock.json -> VM:~/
+ *   3. ssh: install deps if package-lock.json indicates change.
+ *   4. ssh: kill running middleware + relaunch from ~ (so .env relative paths resolve).
+ *   5. Poll public /health endpoint until ready (or timeout).
  *
  * Usage:
  *   node scripts/deploy-vm.js                  # full deploy
- *   node scripts/deploy-vm.js --skip-pull      # skip git pull (e.g. testing restart only)
+ *   node scripts/deploy-vm.js --skip-sync      # don't scp, just restart
  *   node scripts/deploy-vm.js --skip-install   # skip npm install even if lockfile changed
  *   node scripts/deploy-vm.js --no-verify-clean # bypass clean-tree check
  *
- * Env overrides: see scripts/vm-config.js
+ * NOTE: Each ssh/scp call needs 2 password prompts (cloudtm jump, then VM).
+ * Expect ~3 prompt-pairs per full deploy.
  *
- * Exits non-zero on any failure.
+ * Env overrides: see scripts/vm-config.js
  */
 
 "use strict";
 
 const { spawn, execSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
 const https = require("https");
 const http = require("http");
 const { URL } = require("url");
-const { cfg, sshArgs, describe } = require("./vm-config");
+const { cfg, sshArgs, scpArgs, describe } = require("./vm-config");
 
 const args = process.argv.slice(2);
-const SKIP_PULL = args.includes("--skip-pull");
+const SKIP_SYNC = args.includes("--skip-sync") || args.includes("--skip-pull");
 const SKIP_INSTALL = args.includes("--skip-install");
 const NO_VERIFY_CLEAN = args.includes("--no-verify-clean");
+
+// Repo root = parent of scripts/
+const REPO_ROOT = path.resolve(__dirname, "..");
+
+// Paths to sync (relative to REPO_ROOT). Matches runbook step 3.
+// .env and middleware/certs/ are intentionally NOT synced — they live on the VM.
+const SYNC_PATHS = [
+  "middleware",
+  "scripts",
+  "artifacts",
+  "package.json",
+  "package-lock.json",
+];
 
 function fail(msg, err) {
   console.error(`\n[FAIL] ${msg}`);
@@ -46,29 +67,20 @@ function step(msg) {
   console.log(`\n>>> ${msg}`);
 }
 
-/**
- * Run an ssh command, stream output, resolve with exit code.
- * `remoteCmd` is a single shell string evaluated by the remote shell.
- */
-function sshExec(remoteCmd, { tag = "vm" } = {}) {
+function sshExec(remoteCmd) {
   return new Promise((resolve, reject) => {
     const finalArgs = sshArgs([remoteCmd]);
     // Inherit ALL stdio so ssh gets a real TTY for password prompts on Windows.
-    // (Piping stdout/stderr breaks OpenSSH's interactive auth on win32.)
     const proc = spawn("ssh", finalArgs, { stdio: "inherit" });
     proc.on("error", reject);
     proc.on("close", (code) => resolve(code));
   });
 }
 
-/**
- * Run an ssh command and capture stdout as a string. Reject on non-zero.
- */
 function sshCapture(remoteCmd) {
   return new Promise((resolve, reject) => {
     const finalArgs = sshArgs([remoteCmd]);
-    // Inherit stdin + stderr so password prompts work on Windows.
-    // Pipe stdout so we can capture the command output.
+    // Inherit stdin + stderr (password prompts), pipe stdout to capture.
     const proc = spawn("ssh", finalArgs, { stdio: ["inherit", "pipe", "inherit"] });
     let out = "";
     proc.stdout.on("data", (d) => (out += d.toString()));
@@ -77,6 +89,15 @@ function sshCapture(remoteCmd) {
       if (code === 0) resolve(out);
       else reject(new Error(`ssh exit ${code}`));
     });
+  });
+}
+
+function scpExec(sources, remoteDest) {
+  return new Promise((resolve, reject) => {
+    const finalArgs = scpArgs(sources, remoteDest);
+    const proc = spawn("scp", finalArgs, { stdio: "inherit" });
+    proc.on("error", reject);
+    proc.on("close", (code) => resolve(code));
   });
 }
 
@@ -91,7 +112,6 @@ function pollHealth(url, timeoutMs, intervalMs) {
         return reject(new Error(`health did not respond within ${timeoutMs}ms (last URL ${url})`));
       }
       const req = lib.get(url, { timeout: 5000 }, (res) => {
-        // drain
         res.on("data", () => {});
         res.on("end", () => {
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -118,7 +138,7 @@ function preflight() {
   }
   let status = "";
   try {
-    status = execSync("git status --porcelain", { encoding: "utf8" });
+    status = execSync("git status --porcelain", { encoding: "utf8", cwd: REPO_ROOT });
   } catch (err) {
     fail("could not run `git status` (are you in a git repo?)", err);
   }
@@ -131,16 +151,14 @@ function preflight() {
   }
   ok("working tree clean");
 
-  // Confirm local main is up to date with origin/main (so VM `git pull` will
-  // actually pick up our changes).
   try {
-    execSync("git fetch origin", { stdio: "ignore" });
+    execSync("git fetch origin", { stdio: "ignore", cwd: REPO_ROOT });
   } catch (err) {
     console.warn("[warn] git fetch failed (offline?), continuing");
   }
   try {
-    const local = execSync("git rev-parse @", { encoding: "utf8" }).trim();
-    const remote = execSync("git rev-parse @{u}", { encoding: "utf8" }).trim();
+    const local = execSync("git rev-parse @", { encoding: "utf8", cwd: REPO_ROOT }).trim();
+    const remote = execSync("git rev-parse @{u}", { encoding: "utf8", cwd: REPO_ROOT }).trim();
     if (local !== remote) {
       fail(
         `local HEAD (${local.slice(0, 7)}) != upstream (${remote.slice(0, 7)}). ` +
@@ -153,33 +171,44 @@ function preflight() {
   }
 }
 
+function resolveSyncPaths() {
+  const resolved = [];
+  for (const rel of SYNC_PATHS) {
+    const abs = path.join(REPO_ROOT, rel);
+    if (!fs.existsSync(abs)) {
+      console.warn(`[warn] skipping missing path: ${rel}`);
+      continue;
+    }
+    resolved.push(abs);
+  }
+  if (!resolved.length) fail("nothing to sync (no SYNC_PATHS exist locally)");
+  return resolved;
+}
+
 async function main() {
   console.log("=== TSS VM Deploy ===\n");
   console.log(describe());
 
   preflight();
 
-  // 1) git pull -----------------------------------------------------------
-  if (SKIP_PULL) {
-    console.log("\n(--skip-pull) skipping git pull on VM");
+  // 1) sync local files to VM via scp ------------------------------------
+  if (SKIP_SYNC) {
+    console.log("\n(--skip-sync) skipping scp upload");
   } else {
-    step("git pull on VM");
-    const code = await sshExec(
-      `cd ${cfg.vmRepoDir} && git pull --ff-only`,
-      { tag: "git" }
-    );
-    if (code !== 0) fail(`git pull exited with ${code}`);
-    ok("git pull complete");
+    step("scp -r local files to VM:~/");
+    console.log("    paths: " + SYNC_PATHS.join(", "));
+    const sources = resolveSyncPaths();
+    const code = await scpExec(sources, "~/");
+    if (code !== 0) fail(`scp exited with ${code}`);
+    ok("files synced");
   }
 
-  // 2) npm install if lockfile changed -----------------------------------
+  // 2) npm install if needed ---------------------------------------------
   if (!SKIP_INSTALL) {
     step("checking if npm install is needed on VM");
     let needsInstall = false;
     try {
       const out = await sshCapture(
-        // Compare modified time of node_modules vs package-lock.json.
-        // If lockfile is newer, OR node_modules is missing, we install.
         `cd ${cfg.vmRepoDir} && ` +
           `if [ ! -d node_modules ]; then echo NEEDS; ` +
           `elif [ package-lock.json -nt node_modules ]; then echo NEEDS; ` +
@@ -192,10 +221,7 @@ async function main() {
     }
     if (needsInstall) {
       step("npm install on VM");
-      const code = await sshExec(
-        `cd ${cfg.vmRepoDir} && npm install --omit=dev`,
-        { tag: "npm" }
-      );
+      const code = await sshExec(`cd ${cfg.vmRepoDir} && npm install --omit=dev`);
       if (code !== 0) fail(`npm install exited with ${code}`);
       ok("dependencies up to date");
     } else {
@@ -205,41 +231,35 @@ async function main() {
     console.log("\n(--skip-install) skipping dependency install");
   }
 
-  // 3) stop running middleware -------------------------------------------
-  step("stopping any running middleware on VM");
-  await sshExec(
+  // 3) restart middleware (stop + start in ONE ssh call to save passwords)
+  step("restarting middleware on VM");
+  const restartCmd =
+    // Stop
     `pkill -f '${cfg.vmProcessPattern}' || true; sleep 1; ` +
-      `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
-      `pkill -9 -f '${cfg.vmProcessPattern}' || true; fi; true`,
-    { tag: "stop" }
-  );
-  ok("middleware stopped (or was not running)");
-
-  // 4) launch middleware --------------------------------------------------
-  step("launching middleware on VM");
-  // setsid + redirected stdin so the process survives ssh disconnect cleanly.
-  const launchCmd =
+    `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
+    `pkill -9 -f '${cfg.vmProcessPattern}' || true; fi; ` +
+    // Start (from ~ so .env relative paths resolve)
     `cd ${cfg.vmRunDir} && ` +
-    // Truncate previous log to keep things readable across deploys
     `: > middleware.log && ` +
     `setsid ${cfg.vmStartCmd} </dev/null && ` +
-    `sleep 1 && pgrep -f '${cfg.vmProcessPattern}' || ` +
-    `(echo 'middleware did not start; tail of log:'; tail -n 50 middleware.log; exit 1)`;
-  const launchCode = await sshExec(launchCmd, { tag: "start" });
-  if (launchCode !== 0) fail(`middleware launch failed (exit ${launchCode})`);
-  ok("middleware process running on VM");
+    `sleep 1 && ` +
+    `if pgrep -f '${cfg.vmProcessPattern}' >/dev/null; then ` +
+    `echo 'middleware running'; ` +
+    `else echo 'middleware did NOT start; tail of log:'; tail -n 50 middleware.log; exit 1; fi`;
+  const restartCode = await sshExec(restartCmd);
+  if (restartCode !== 0) fail(`middleware restart failed (exit ${restartCode})`);
+  ok("middleware running on VM");
 
-  // 5) poll public health -------------------------------------------------
+  // 4) poll public health -------------------------------------------------
   step(`polling ${cfg.publicHealthUrl}`);
   try {
     await pollHealth(cfg.publicHealthUrl, cfg.healthTimeoutMs, cfg.healthIntervalMs);
     ok("public health endpoint returns 2xx");
   } catch (err) {
-    // Show last log lines to help diagnose
     console.error("\n[FAIL]", err.message);
     try {
       console.error("\n--- tail of middleware.log on VM ---");
-      await sshExec(`tail -n 80 ${cfg.vmLogPath}`, { tag: "log" });
+      await sshExec(`tail -n 80 ${cfg.vmLogPath}`);
     } catch (_) {}
     process.exit(1);
   }

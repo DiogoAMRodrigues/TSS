@@ -75,4 +75,23 @@ function describe() {
   ].join("\n");
 }
 
-module.exports = { cfg, sshTarget, sshArgs, describe };
+/**
+ * Build scp args. Supports multiple sources (local paths) and one destination
+ * (remote path on the VM). Mirrors sshArgs jump/config plumbing.
+ *
+ * scp -r <opts> src1 src2 ... user@host:dest
+ */
+function scpArgs(sources, remoteDest) {
+  const args = ["-r"];
+  if (cfg.sshConfig) {
+    args.push("-F", cfg.sshConfig);
+  }
+  if (cfg.sshJump) {
+    args.push("-J", cfg.sshJump);
+  }
+  args.push(...sources);
+  args.push(`${sshTarget()}:${remoteDest}`);
+  return args;
+}
+
+module.exports = { cfg, sshTarget, sshArgs, scpArgs, describe };
