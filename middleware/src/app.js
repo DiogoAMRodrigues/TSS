@@ -4,7 +4,9 @@ const dotenv = require("dotenv");
 const path = require("path");
 const IdentityClient = require("./services/identityClient");
 const SimulatedEidasProvider = require("./providers/simulatedEidasProvider");
+const RealEidasProvider = require("./providers/realEidasProvider");
 const createKycRouter = require("./routes/kycRoutes");
+const createEidasRouter = require("./routes/eidasRoutes");
 const { configureStore } = require("./state/store");
 const { createAuth } = require("./security/auth");
 const { createRateLimiters } = require("./security/rateLimit");
@@ -37,7 +39,10 @@ function createApp(options = {}) {
   });
 
   const identityClient = options.identityClient || new IdentityClient();
-  const providerAdapter = options.providerAdapter || new SimulatedEidasProvider();
+  const providerKind = (process.env.EIDAS_PROVIDER || "simulated").toLowerCase();
+  const providerAdapter =
+    options.providerAdapter ||
+    (providerKind === "real" ? new RealEidasProvider() : new SimulatedEidasProvider());
   const auth = options.auth || createAuth();
   const rateLimiters = options.rateLimiters || createRateLimiters();
   const reconciliationService =
@@ -71,6 +76,30 @@ function createApp(options = {}) {
       reconciliationService,
     })
   );
+
+  // Mount eIDAS routes only when the real provider is active
+  if (providerKind === "real" && typeof providerAdapter.buildAuthnRequest === "function") {
+    app.use(
+      "/api/kyc/eidas",
+      createEidasRouter({
+        identityClient,
+        providerAdapter,
+        config,
+        auth,
+        rateLimiters,
+      })
+    );
+  }
+
+  // Static SLO landing page registered with AMA preprod (EIDAS_SP_SLO_URL)
+  app.get("/logout", (_req, res) => {
+    res
+      .status(200)
+      .type("html")
+      .send(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Logout</title></head><body><h2>Sessão terminada / Session ended</h2></body></html>`
+      );
+  });
 
   return { app, config, reconciliationService, auth, rateLimiters };
 }
