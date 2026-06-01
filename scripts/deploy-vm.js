@@ -382,13 +382,14 @@ async function syncToVm() {
 async function restartMiddlewareOnVm() {
   step("VM: install deps (if needed) + restart middleware");
 
-  // Install only if node_modules is missing. scp resets package-lock.json mtime
-  // every run, so the older `-nt` check triggered an install every time.
+  // Install if node_modules is missing OR if a critical runtime dep is missing
+  // (catches the "node_modules exists but is stale" case after package.json
+  // changes — scp resets mtimes so we can't trust file timestamps).
   const installBlock = SKIP_INSTALL
     ? `echo '(--skip-install) skipping dependency install';`
     : `cd ${cfg.vmRepoDir} && ` +
-      `if [ ! -d node_modules ]; then ` +
-      `  echo '>>> npm install (node_modules missing)'; ` +
+      `if [ ! -d node_modules ] || [ ! -d node_modules/ethers ]; then ` +
+      `  echo '>>> npm install (node_modules missing or stale)'; ` +
       `  npm install --omit=dev || exit 1; ` +
       `else ` +
       `  echo 'node_modules present; skipping install'; ` +
