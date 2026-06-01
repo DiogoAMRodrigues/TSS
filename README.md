@@ -154,7 +154,7 @@ It supports two interchangeable providers selected via `EIDAS_PROVIDER`:
 - `simulated` (default) — local stub for development and tests.
 - `real` — SAML 2.0 integration with Portugal's **AMA Autenticação.gov** preprod IdP.
 
-See [Real eIDAS (AMA Autenticação.gov)](#real-eidas-ama-autenticacaogov) for the SAML setup.
+See [VM Deployment (INESC cluster + Real eIDAS)](#vm-deployment-inesc-cluster--real-eidas) for the SAML setup and one-shot deploy script.
 
 ### Middleware setup
 1. Deploy contracts:
@@ -268,26 +268,116 @@ Set `VITE_DEBUG=true` in `frontend/.env` and open the browser console (F12) to s
 - **User view**: Connect wallet, start KYC (sign challenge via MetaMask), view status/role/expiry, reverify
 - **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state
 
-## Real eIDAS (AMA Autenticação.gov)
+## VM Deployment (INESC cluster + Real eIDAS)
 
-The `real` eIDAS provider speaks SAML 2.0 directly to Portugal's
+The middleware is deployed on the INESC-ID DPSS VM and exposed publicly at
+`https://tss.dpss.inesc-id.pt`, so AMA Autenticação.gov can callback into it
+during real eIDAS / SAML 2.0 KYC flows. The blockchain stays on the laptop
+and is bridged to the VM via a reverse SSH tunnel.
+
+### Architecture
+```
+[ AMA / autenticação.gov IdP (preprod) ]
+        │  SAML 2.0 over HTTPS
+        ▼
+[ DPSS nginx → https://tss.dpss.inesc-id.pt ]   (Let's Encrypt, managed by DPSS)
+        │  HTTP :80
+        ▼
+[ VM 10.16.144.70 — Apache2 reverse proxy / → 127.0.0.1:3000 ]
+        │
+        ▼
+[ middleware on VM  127.0.0.1:3000 ]
+        │  JSON-RPC via SSH reverse tunnel  127.0.0.1:8545 → laptop:8545
+        ▼
+[ Hyperledger Besu 4-node IBFT (docker)  on laptop  127.0.0.1:8545 ]
+```
+
+Why the split: AMA only needs to reach the **middleware** (callback URL); the
+chain doesn't need to be public. Laptop runs Docker + Besu (much simpler than
+installing Besu on the VM); reverse SSH tunnel bridges them. Trade-off: when
+the laptop sleeps or the tunnel drops, the middleware loses chain access —
+fine for thesis demos, not 24/7. Re-run `npm run deploy:vm` to restore it.
+
+### One-shot deploy
+From a clean, pushed working tree:
+```bash
+npm run deploy:vm
+```
+Sequence (`scripts/deploy-vm.js`):
+1. **Pre-flight** — refuse to deploy if the local tree is dirty or local HEAD ≠ `origin/main` (override with `--no-verify-clean`).
+2. **`docker compose up -d`** — bring up the 4-node Besu network on the laptop and wait for `eth_blockNumber` on `127.0.0.1:8545`.
+3. **Deploy contracts** — runs `scripts/deploy.js --network besu`, but skips if `scripts/check-deployment.js` reports `VALID` (override with `--force-deploy`).
+4. **Patch `middleware/.env`** — auto-seeds `IDENTITY_ADDRESS`, `RPC_URL=http://127.0.0.1:8545`, and the full eIDAS SAML block (entry point, SP entity, ACS, SLO, cert paths, requested attributes, clock skew) if missing.
+5. **`scp -r`** middleware + `package.json` + `package-lock.json` + `artifacts/` + `deployments/besu.json` to `~/` on the VM.
+6. **SSH install gate** — on the VM: kill anything on port `:8545` and `:3000` (`fuser -k`), `npm install --omit=dev` if the lockfile changed or `node_modules/ethers` is missing, then `setsid nohup node middleware/src/server.js > ~/middleware.log 2>&1 &`. Verifies via `ss -tln | grep ':3000 '`.
+7. **Spawn reverse SSH tunnel** in a separate cmd window (`-N -R 8545:127.0.0.1:8545`) — survives script exit; close the window manually when done.
+8. **Poll** `https://tss.dpss.inesc-id.pt/health` until 2xx, then print log tail.
+
+Expect ~6 password prompts per full run (3 SSH/SCP pairs with ProxyJump).
+
+Flags:
+- `--skip-deploy` — don't redeploy contracts even if `check-deployment` says INVALID.
+- `--force-deploy` — redeploy contracts even when chain state is VALID.
+- `--skip-install` — don't `npm install` on the VM even if the lockfile changed.
+- `--skip-tunnel` — don't spawn a new tunnel window (assumes one is already up).
+- `--no-verify-clean` — bypass the local-clean / pushed-to-origin check.
+- `npm run X` swallows flags. To pass them, use `npm run deploy:vm -- --skip-deploy`.
+
+### Other VM commands
+```bash
+npm run vm:check               # public /health probe + remote port :3000 check
+npm run vm:check -- --logs     # also print last 50 log lines
+npm run vm:logs                # tail -f middleware.log on VM (Ctrl+C to stop)
+npm run vm:logs 200            # last 200 lines, then follow
+npm run vm:restart             # stop + relaunch middleware (no git pull, no scp)
+npm run smoke:eidas            # local AuthnRequest structural smoke test (does NOT contact AMA)
+```
+
+### SSH config
+Scripts default to `D:\Main\Documents\Academic\IST\TESE\cluster_configuration_ist1112192\config`.
+Override with environment variables:
+```
+set VM_SSH_CONFIG=path\to\config
+set VM_SSH_USER=ist1112192
+set VM_SSH_HOST=10.16.144.70
+set VM_SSH_JUMP=inesc-headnode
+```
+Other overrides (`VM_REPO_DIR`, `VM_RUN_DIR`, `VM_START_CMD`,
+`VM_PUBLIC_HEALTH_URL`, `vmProcessPattern`, …) live in `scripts/vm-config.js`.
+
+### Real eIDAS — SAML 2.0 to AMA Autenticação.gov
+
+The `real` eIDAS provider (`middleware/src/providers/realEidasProvider.js`)
+speaks SAML 2.0 directly to Portugal's
 Autenticação.gov preprod IdP (`https://preprod.autenticacao.gov.pt/fa/Default.aspx`).
+Selected via `EIDAS_PROVIDER=real`. Default is `simulated` (local stub for tests).
 
-### Flow
+**End-to-end browser flow:**
 ```
-wallet  --POST /api/kyc/request-->  middleware
-wallet  --sign challenge-->         middleware
-wallet  --GET  /api/kyc/eidas/start-->  middleware  --302-->  AMA login (CC + PIN, or CMD)
-AMA     --POST /api/kyc/eidas/callback-->  middleware  --tx-->  Identity.sol
+wallet  --POST /api/kyc/request---------------------------->  middleware
+                                                              (returns challenge, 5-min TTL)
+wallet  --MetaMask personal_sign-------------------------->  user signs challenge
+browser --GET  /api/kyc/eidas/start?apiKey=&walletAddress=&signature=&requestedRole=
+                                                              middleware
+                                                              (returns auto-submit form)
+browser --POST------------------------------------------->   AMA login (CC + PIN, or CMD)
+AMA     --POST /api/kyc/eidas/callback------------------->   middleware
+                                                              --tx (via tunnel)-->  Identity.whitelist()
 ```
 
-`RelayState` carries the wallet address across the redirect so the middleware can
-bind the AMA-issued attributes to the right address on the callback.
+`RelayState` carries the wallet address across the redirect so the middleware
+binds the AMA-issued attributes to the right address on callback.
 
-### Required `.env` keys
+`/api/kyc/eidas/start` accepts the API key as either an `x-api-key` header
+**or** an `?apiKey=` query parameter (the browser URL bar can't set headers).
+Defense-in-depth is preserved: the wallet's signature on the challenge is the
+real auth gate.
+
+**Required `.env` keys** (`patchMiddlewareEnv()` auto-seeds these on every deploy):
 ```
 EIDAS_PROVIDER=real
 EIDAS_IDP_ENTRY_POINT=https://preprod.autenticacao.gov.pt/fa/Default.aspx
+EIDAS_IDP_ISSUER=https://preprod.autenticacao.gov.pt
 EIDAS_SP_ENTITY_ID=https://tss.dpss.inesc-id.pt
 EIDAS_SP_PROVIDER_NAME=TSS - Instituto Superior Tecnico
 EIDAS_SP_ACS_URL=https://tss.dpss.inesc-id.pt/api/kyc/eidas/callback
@@ -296,65 +386,52 @@ EIDAS_SP_CERT_PATH=middleware/certs/tss-saml-leaf.crt
 EIDAS_SP_KEY_PATH=middleware/certs/tss-saml.key
 EIDAS_IDP_CERT_PATH=middleware/certs/ama-preprod-ca.crt
 EIDAS_REQUESTED_ATTRIBUTES=NIC,NomeCompleto,NomeProprio,NomeApelido,DataNascimento,CorreioElectronico
+EIDAS_CLOCK_SKEW_SECONDS=30
 ```
 
-`middleware/.env.example` ships the full template. Certs and keys are gitignored.
+**SAML certs** (gitignored, must be present on the VM under `middleware/certs/`):
+- `tss-saml.key` — RSA 2048 private key, generated on the VM, chmod 600, **never** leaves the VM.
+- `tss-saml-leaf.crt` — AMA-signed SP cert (Issuer `CN=saml.preprod.autenticacao.gov.pt, O=AMA`, Subject `tss.dpss.inesc-id.pt`).
+- `ama-preprod-ca.crt` — AMA's preprod IdP cert (validates incoming SAML responses).
 
-### Smoke test
-Builds and signs an AuthnRequest locally without contacting AMA, then runs
-structural assertions (signature, embedded cert subject, AMA-specific
+To verify cert ↔ key match on the VM:
+```bash
+openssl x509 -in middleware/certs/tss-saml-leaf.crt -noout -modulus | openssl md5
+openssl rsa  -in middleware/certs/tss-saml.key       -noout -modulus | openssl md5
+# both md5 hashes must match
+```
+
+**AMA SP registration** is handled by Rui Martinho (`rui.martinho@arte.gov.pt`,
+ARTE/AMA). One-time process: send CSR + SP form → AMA signs cert → place
+`tss-saml-leaf.crt` + `ama-preprod-ca.crt` on the VM → AMA flips config live.
+
+**Smoke test** — builds and signs an AuthnRequest locally without contacting
+AMA, then runs structural assertions (signature, embedded cert subject,
 `fa:RequestedAttributes` extension, etc.):
 ```bash
 npm run smoke:eidas
 ```
-The generated AuthnRequest is written to `scripts/smoke-out/authn-request.xml`
-for inspection. Exits non-zero on any failure.
+Output written to `scripts/smoke-out/authn-request.xml`. Exits non-zero on failure.
 
-## VM Deployment (INESC cluster)
+### Hard constraints
+1. **`localhost` on Windows resolves to IPv6 (`::1`) first.** Besu binds IPv4 — always use `127.0.0.1` explicitly.
+2. **`package.json` lives at the TSS root**, not in `middleware/`. On the VM, `node_modules/` ends up in `~/`, and `node middleware/src/server.js` must be run from `~` so `.env` relative paths resolve.
+3. **`ethers` is a runtime dependency** (not devDependency) — `--omit=dev` would otherwise skip it and the middleware crashes on import.
+4. **No sudo on the cluster jump host** (`inesc-headnode`). It's gateway-only. All compute happens on the VM `10.16.144.70`.
+5. **Tunnel must be up before middleware accepts KYC requests.** The middleware uses a lazy `JsonRpcProvider`, so it starts fine without the tunnel, but any `/api/kyc/*` call that touches the chain will fail until the tunnel is restored.
 
-The middleware is deployed on the INESC VM (`10.16.144.70`, jump host
-`inesc-headnode`) and exposed publicly at `https://tss.dpss.inesc-id.pt`.
-The repo is cloned at `$HOME` on the VM so middleware launches from `~`
-and `.env` relative paths resolve to `~/middleware/...`.
+### Common failures
 
-### One-shot deploy
-From a clean, pushed working tree:
-```bash
-npm run deploy:vm
-```
-Sequence:
-1. Pre-flight: refuse to deploy if the local tree is dirty or local HEAD ≠ `origin/main`.
-2. `ssh git pull --ff-only` on the VM.
-3. `npm install --omit=dev` if `package-lock.json` changed.
-4. Kill any running middleware (`pkill -f 'node middleware/src/server.js'`).
-5. Re-launch via `setsid nohup node middleware/src/server.js`, redirected to `~/middleware.log`.
-6. Poll `https://tss.dpss.inesc-id.pt/health` until 2xx (or print the log tail and exit non-zero).
-
-Flags:
-- `--skip-pull` — restart only, no `git pull`.
-- `--skip-install` — don't run `npm install` even if the lockfile changed.
-- `--no-verify-clean` — bypass the local-clean check (use with care).
-
-### Other VM commands
-```bash
-npm run vm:check          # public /health probe + remote pgrep
-npm run vm:check -- --logs # also print last 50 log lines
-npm run vm:logs           # tail -f middleware.log on VM (Ctrl+C to stop)
-npm run vm:logs 200       # last 200 lines, then follow
-npm run vm:restart        # stop + relaunch middleware (no git pull)
-```
-
-### SSH config
-The scripts default to the cluster SSH config at
-`D:\Main\...\cluster_configuration_ist1112192\config`. Override with:
-```
-set VM_SSH_CONFIG=path\to\config
-set VM_SSH_USER=ist1112192
-set VM_SSH_HOST=10.16.144.70
-set VM_SSH_JUMP=inesc-headnode
-```
-Other overrides (`VM_REPO_DIR`, `VM_RUN_DIR`, `VM_START_CMD`,
-`VM_PUBLIC_HEALTH_URL`, …) live in `scripts/vm-config.js`.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `curl: (52) Empty reply` from local besu | Besu still bootstrapping | Wait 30s; `docker compose logs --tail 20 node1` should show `Imported #N` |
+| `npm run deploy:vm` exits with `4294967295` | Self-killed via `pkill -f` argv match (legacy bug) | Already fixed: deploy script uses port-based `fuser -k 8545/tcp; fuser -k 3000/tcp` |
+| Middleware `Cannot find module 'ethers'` on VM | `--omit=dev` skipped a devDependency | Already fixed: `ethers` moved to `dependencies`. Re-run deploy to refresh `node_modules` |
+| `/api/kyc/eidas/start` returns `Missing x-api-key` in browser | Browser URL bar can't set headers | Use `?apiKey=client-key` query param (already supported) |
+| `/api/kyc/eidas/callback` 5xx | SP cert ↔ key mismatch, or AMA cert path wrong | Verify modulus md5 (above); check `EIDAS_*_CERT_PATH` resolves under `middleware/certs/` on the VM |
+| `/health` 2xx but `POST /api/kyc/request` hangs | Reverse tunnel dropped (laptop slept, SSH timeout) | Re-run `npm run deploy:vm` (or just leave the cmd window open and re-trigger SSH) |
+| PowerShell `--data '{...}'` collapses to `{}` | PowerShell quoting | Write the JSON to a temp file and use `curl --data-binary "@body.json"` |
+| `Cannot GET /` from `https://tss.dpss.inesc-id.pt/` | No UI route on the middleware | Expected. Hit `/health` or the `/api/...` endpoints |
 
 ## Architecture
 4-layer architecture:
