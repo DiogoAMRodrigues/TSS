@@ -265,8 +265,33 @@ A React web interface under `frontend/` provides wallet connection (MetaMask), K
 Set `VITE_DEBUG=true` in `frontend/.env` and open the browser console (F12) to see API calls, keys used, and response statuses.
 
 ### Features
-- **User view**: Connect wallet, start KYC (sign challenge via MetaMask), view status/role/expiry, reverify
-- **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state
+- **User view**: Connect wallet, start KYC, sign challenge with MetaMask, then either:
+  - **Continue with Cartão de Cidadão (eIDAS)** — redirects to AMA Autenticação.gov, log in with real CC + PIN (or Chave Móvel Digital), AMA POSTs the SAML response back to the middleware, wallet is whitelisted on chain.
+  - **Use simulated KYC** (dev only) — bypasses AMA, signature alone is enough.
+- View status / role / expiry, reverify when attestation expires.
+- **Admin view**: Revoke users, trigger reconciliation, browse audit log, look up user state.
+
+### Testing real eIDAS end-to-end
+1. Make sure the full stack is up: `npm run deploy:vm` (docker, contracts, tunnel, VM middleware).
+2. Point the frontend at the public middleware in `frontend/.env`:
+   ```
+   VITE_API_URL=https://tss.dpss.inesc-id.pt
+   VITE_API_KEY=client-key
+   ```
+   (localhost won't work — AMA can't reach it for the callback.)
+3. `cd frontend && npm run dev` → `http://localhost:5173`.
+4. Connect MetaMask (network `IST_Test`, chainId `0x539`).
+5. Start KYC → sign challenge → click **Continue with Cartão de Cidadão (eIDAS)**.
+6. AMA login: insert CC, enter PIN, **Autorizar** the requested attributes.
+7. Tab redirects back to `/api/kyc/eidas/callback` — middleware whitelists wallet on chain.
+8. Verify on chain:
+   ```powershell
+   npx hardhat console --network besu
+   ```
+   ```js
+   const id = await ethers.getContractAt("Identity", "0x7aCDC22Fe83cB0CD65F421398f9968Ac1D7Fd425");
+   await id.isWhitelisted("<your wallet>")  // → true
+   ```
 
 ## VM Deployment (INESC cluster + Real eIDAS)
 

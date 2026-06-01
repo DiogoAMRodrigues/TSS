@@ -61,6 +61,29 @@ export function KycFlow({ onVerificationComplete }) {
     }
   };
 
+  // Real eIDAS path: sign challenge with MetaMask, then redirect the browser
+  // to /api/kyc/eidas/start. AMA Autenticação.gov takes over from there
+  // (Cartão de Cidadão / Chave Móvel Digital), then POSTs back to the
+  // middleware callback which whitelists the wallet on chain.
+  const handleEidasFlow = async () => {
+    if (!signer || !challenge) {
+      setError('Signer or challenge not available');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const signature = await signer.signMessage(challenge);
+      const url = api.eidasStartUrl(address, signature, role);
+      window.location.href = url;
+    } catch (err) {
+      setError(err.message || 'Failed to start eIDAS flow');
+      setLoading(false);
+    }
+  };
+
   const handleReset = () => {
     setStep(1);
     setIdentifier('');
@@ -141,15 +164,26 @@ export function KycFlow({ onVerificationComplete }) {
             </div>
 
             <p className="step-description">
-              Click the button below to sign this challenge with MetaMask. This proves you control this wallet.
+              Sign this challenge with MetaMask to prove you control this wallet,
+              then choose how to verify your identity.
             </p>
 
             <button
               className="btn btn-primary btn-large"
+              onClick={handleEidasFlow}
+              disabled={loading}
+              title="Real eIDAS via AMA Autenticação.gov (Cartão de Cidadão / CMD)"
+            >
+              {loading ? 'Working...' : 'Continue with Cartão de Cidadão (eIDAS)'}
+            </button>
+
+            <button
+              className="btn btn-secondary btn-large"
               onClick={handleSignChallenge}
               disabled={loading}
+              title="Simulated KYC — for development only"
             >
-              {loading ? 'Signing...' : 'Sign Challenge with MetaMask'}
+              {loading ? 'Signing...' : 'Use simulated KYC (dev only)'}
             </button>
 
             <button

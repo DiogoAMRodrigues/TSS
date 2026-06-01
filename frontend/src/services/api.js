@@ -53,6 +53,20 @@ export const api = {
     return res.json();
   },
 
+  // Build the URL that kicks off the real eIDAS / SAML flow against AMA.
+  // The browser must navigate to this URL (location.href = ...) — fetch
+  // would not follow the AMA redirect chain. The middleware accepts the
+  // API key as ?apiKey=... query param for browser-driven GET routes.
+  eidasStartUrl(walletAddress, signature, requestedRole) {
+    const params = new URLSearchParams({
+      apiKey: API_KEY,
+      walletAddress,
+      signature,
+      requestedRole
+    });
+    return `${API_URL}/api/kyc/eidas/start?${params.toString()}`;
+  },
+
   // Reverify
   async reverify(walletAddress, requestedRole, identifier, attestationDays = 365) {
     const res = await fetch(`${API_URL}/api/kyc/reverify`, {
