@@ -292,6 +292,17 @@ function patchMiddlewareEnv() {
     IDENTITY_ADDRESS: identityAddr,
     RPC_URL: LOCAL_BESU_RPC, // VM uses tunnel → 127.0.0.1:8545; laptop direct same value
     EIDAS_PROVIDER: "real",
+    // ----- eIDAS / AMA preprod (real provider requires all of these) -----
+    EIDAS_IDP_ENTRY_POINT: "https://preprod.autenticacao.gov.pt/fa/Default.aspx",
+    EIDAS_IDP_CERT_PATH: "middleware/certs/ama-preprod-ca.crt",
+    EIDAS_SP_ENTITY_ID: "https://tss.dpss.inesc-id.pt",
+    EIDAS_SP_PROVIDER_NAME: "TSS - Instituto Superior Técnico",
+    EIDAS_SP_ACS_URL: "https://tss.dpss.inesc-id.pt/api/kyc/eidas/callback",
+    EIDAS_SP_SLO_URL: "https://tss.dpss.inesc-id.pt/logout",
+    EIDAS_SP_CERT_PATH: "middleware/certs/tss-saml-leaf.crt",
+    EIDAS_SP_KEY_PATH: "middleware/certs/tss-saml.key",
+    EIDAS_REQUESTED_ATTRIBUTES: "NIC,NomeCompleto,DataNascimento,CorreioElectronico",
+    EIDAS_CLOCK_SKEW_SECONDS: "60",
   };
   for (const [k, v] of Object.entries(replacements)) {
     const re = new RegExp(`^${k}=.*$`, "m");
@@ -302,6 +313,7 @@ function patchMiddlewareEnv() {
   ok(`IDENTITY_ADDRESS=${identityAddr}`);
   ok(`RPC_URL=${LOCAL_BESU_RPC}`);
   ok(`EIDAS_PROVIDER=real`);
+  ok(`EIDAS SAML config seeded (IDP/SP entity, ACS, certs, attrs)`);
 }
 
 // ---------- reverse SSH tunnel (new window) -----------------------------------
