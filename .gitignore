@@ -55,3 +55,7 @@ zTESE/
 # AI-generated project docs (local only)
 PROJECT_OVERVIEW.md
 QUICK_REFERENCE.md
+# Real eIDAS / SAML secrets and runtime
+.env
+middleware/certs/
+scripts/smoke-out/
