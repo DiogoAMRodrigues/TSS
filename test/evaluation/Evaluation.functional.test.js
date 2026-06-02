@@ -7,9 +7,9 @@
  *   E2E-3: Trade via AMM (init pool -> add liquidity -> swap -> DvP)
  *   E2E-4: Engine switching at runtime (revoke OB -> authorize AMM,
  *          identical tokens, identical Settlement contract)
- *   NEG-1..6: Negative compliance / safety paths (non-whitelisted,
- *          expired attestation, unregistered token, self-trade,
- *          paused settlement, slippage exceeded on AMM).
+ *   NEG-1..7: Negative compliance / safety paths (non-whitelisted,
+ *          revoked attestation, unregistered token, self-trade,
+ *          paused settlement, slippage exceeded on AMM, expired attestation).
  *
  * Each scenario writes a row to functional-results.json so the aggregator
  * can build the §5.1 outcomes table.
@@ -337,5 +337,50 @@ describe("Evaluation §5.1 - Functional validation (E2E + negative)", function (
       )
     ).to.be.revertedWith("AMM: slippage exceeded");
     record("NEG-6", "AMM slippage protection (amountOutMin) honoured", true);
+  });
+
+  it("NEG-7: expired attestation prevents matching of resting order", async function () {
+    // Mirrors NEG-2 but exercises the EXPIRY path instead of revocation.
+    // The paper claims (§3): "stale identities cannot participate in
+    // trading: if a KYC attestation expires, the address is effectively
+    // excluded from all system operations until re-verified." This test
+    // backs that claim end-to-end.
+    const core = await deployCore();
+    const { orderBook } = await deployOrderBook(core);
+
+    await send(core.cashToken.mint(core.buyer.address, TEN));
+    await send(core.cashToken.connect(core.buyer).approve(await core.settlement.getAddress(), ONE));
+    await send(
+      orderBook.connect(core.buyer).submitOrder(
+        await core.cashToken.getAddress(),
+        await core.securitiesToken.getAddress(),
+        ONE, ONE
+      )
+    );
+
+    // Force the buyer's attestation to expire shortly, then advance time past it.
+    const now = (await ethers.provider.getBlock("latest")).timestamp;
+    const soon = now + 60;
+    await send(core.identity.updateAttestation(core.buyer.address, soon));
+    await ethers.provider.send("evm_increaseTime", [120]);
+    await ethers.provider.send("evm_mine", []);
+
+    expect(await core.identity.isExpired(core.buyer.address)).to.equal(true);
+    expect(await core.identity.isWhitelisted(core.buyer.address)).to.equal(false);
+
+    // Crossing sell from a still-valid seller: matching loop re-checks
+    // whitelisting and skips the buyer's expired order, so no settlement
+    // record is created.
+    await send(core.securitiesToken.mint(core.seller.address, ONE));
+    await send(core.securitiesToken.connect(core.seller).approve(await core.settlement.getAddress(), ONE));
+    await send(
+      orderBook.connect(core.seller).submitOrder(
+        await core.securitiesToken.getAddress(),
+        await core.cashToken.getAddress(),
+        ONE, ONE
+      )
+    );
+    await expect(core.settlement.getSettlement(1)).to.be.revertedWith("Settlement: invalid settlement ID");
+    record("NEG-7", "Expired attestation prevents matching of resting order", true);
   });
 });
