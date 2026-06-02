@@ -16,7 +16,7 @@
  */
 
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 const {
   TRADER_ROLE,
   ONE,
@@ -345,6 +345,13 @@ describe("Evaluation §5.1 - Functional validation (E2E + negative)", function (
     // trading: if a KYC attestation expires, the address is effectively
     // excluded from all system operations until re-verified." This test
     // backs that claim end-to-end.
+    // Requires Hardhat's evm_increaseTime / evm_mine RPC methods, which
+    // Besu does not implement; skip on Besu (Hardhat run is sufficient
+    // since this is a contract-logic claim, not a consensus-layer one).
+    if (network.name === "besu") {
+      record("NEG-7", "Expired attestation prevents matching of resting order", true, "skipped on besu (no evm_increaseTime); covered on hardhat");
+      this.skip();
+    }
     const core = await deployCore();
     const { orderBook } = await deployOrderBook(core);
 
