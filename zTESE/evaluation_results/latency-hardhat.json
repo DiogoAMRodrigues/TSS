@@ -1,0 +1,32 @@
+{
+  "network": "hardhat",
+  "samplesPerOp": 25,
+  "generatedAt": "2026-06-02T19:08:59.550Z",
+  "note": "In-process Hardhat. JS-overhead dominates; for paper-grade numbers run with --network besu.",
+  "results": {
+    "submitOrderOB_resting": {
+      "samples": 25,
+      "meanMs": 3.48,
+      "p50Ms": 3,
+      "p95Ms": 5,
+      "minMs": 1,
+      "maxMs": 7
+    },
+    "submitOrderOB_match_settle": {
+      "samples": 25,
+      "meanMs": 11.84,
+      "p50Ms": 9,
+      "p95Ms": 39,
+      "minMs": 5,
+      "maxMs": 50
+    },
+    "submitOrderAMM_swap": {
+      "samples": 25,
+      "meanMs": 4.12,
+      "p50Ms": 4,
+      "p95Ms": 6,
+      "minMs": 3,
+      "maxMs": 7
+    }
+  }
+}

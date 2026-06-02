@@ -1,0 +1,32 @@
+{
+  "network": "besu",
+  "samplesPerOp": 15,
+  "generatedAt": "2026-06-02T19:22:31.150Z",
+  "note": "Besu IBFT 2.0 (2s block period). Numbers reflect real settle latency.",
+  "results": {
+    "submitOrderOB_resting": {
+      "samples": 15,
+      "meanMs": 1995.4,
+      "p50Ms": 2061,
+      "p95Ms": 2075,
+      "minMs": 1549,
+      "maxMs": 2075
+    },
+    "submitOrderOB_match_settle": {
+      "samples": 15,
+      "meanMs": 1872.2,
+      "p50Ms": 2067,
+      "p95Ms": 2090,
+      "minMs": 1556,
+      "maxMs": 2090
+    },
+    "submitOrderAMM_swap": {
+      "samples": 15,
+      "meanMs": 2003.93,
+      "p50Ms": 2075,
+      "p95Ms": 2080,
+      "minMs": 1548,
+      "maxMs": 2080
+    }
+  }
+}

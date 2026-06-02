@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-06-02T19:28:23.577Z",
+  "total": 11,
+  "passed": 11,
+  "outcomes": [
+    {
+      "id": "E2E-1",
+      "description": "Onboarding + asset issuance + registry registration",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "E2E-2",
+      "description": "OrderBook buy+sell -> match -> atomic DvP",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "E2E-3",
+      "description": "AMM initialize+liquidity+swap -> atomic DvP",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "E2E-4",
+      "description": "Hot-swap engines at runtime - same Settlement contract serves OB then AMM",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-1",
+      "description": "Non-whitelisted user rejected at submission",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-2",
+      "description": "Revoked attestation prevents matching of resting order",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-3",
+      "description": "Deactivated token rejected at submission",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-4",
+      "description": "Self-trade skipped by matching loop (no settlement)",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-5",
+      "description": "Paused Settlement reverts matching tx",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-6",
+      "description": "AMM slippage protection (amountOutMin) honoured",
+      "passed": true,
+      "note": ""
+    },
+    {
+      "id": "NEG-7",
+      "description": "Expired attestation prevents matching of resting order",
+      "passed": true,
+      "note": ""
+    }
+  ]
+}

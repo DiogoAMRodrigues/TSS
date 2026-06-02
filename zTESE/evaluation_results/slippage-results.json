@@ -1,0 +1,54 @@
+{
+  "network": "hardhat",
+  "generatedAt": "2026-06-02T19:28:27.985Z",
+  "poolReserveCash": "1000000000000000000000000",
+  "poolReserveSecurities": "1000000000000000000000000",
+  "feeBps": 30,
+  "samples": [
+    {
+      "sizePctOfPool": 0.1,
+      "amountIn": "1000000000000000000000",
+      "amountOut": "996006981039903216493",
+      "spotPrice": 1,
+      "realisedPrice": 1.0040090270812438,
+      "slippageBps": 40,
+      "slippagePct": 0.4
+    },
+    {
+      "sizePctOfPool": 1,
+      "amountIn": "10000000000000000000000",
+      "amountOut": "9871580343970612988504",
+      "spotPrice": 1,
+      "realisedPrice": 1.0130090270812437,
+      "slippageBps": 130,
+      "slippagePct": 1.3
+    },
+    {
+      "sizePctOfPool": 5,
+      "amountIn": "50000000000000000000000",
+      "amountOut": "47482973758155927037195",
+      "spotPrice": 1,
+      "realisedPrice": 1.0530090270812438,
+      "slippageBps": 530,
+      "slippagePct": 5.3
+    },
+    {
+      "sizePctOfPool": 10,
+      "amountIn": "100000000000000000000000",
+      "amountOut": "90661089388014913158134",
+      "spotPrice": 1,
+      "realisedPrice": 1.1030090270812438,
+      "slippageBps": 1030,
+      "slippagePct": 10.3
+    },
+    {
+      "sizePctOfPool": 25,
+      "amountIn": "250000000000000000000000",
+      "amountOut": "199519711827096257754652",
+      "spotPrice": 1,
+      "realisedPrice": 1.2530090270812437,
+      "slippageBps": 2530,
+      "slippagePct": 25.3
+    }
+  ]
+}

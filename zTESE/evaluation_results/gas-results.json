@@ -1,0 +1,28 @@
+{
+  "network": "unknown",
+  "generatedAt": "2026-06-02T19:28:25.705Z",
+  "gas": {
+    "deployIdentity": 1733396,
+    "deployRegistry": 1365127,
+    "deploySettlement": 1997715,
+    "deploySecuritiesToken": 2022556,
+    "deployCashToken": 1947711,
+    "whitelistTrader": 120471,
+    "registerAssetCash": 176267,
+    "registerAssetSecurities": 159179,
+    "deployOrderBook": 2990266,
+    "authorizeEngineOB": 63066,
+    "deployAmm": 4859969,
+    "authorizeEngineAMM": 63066,
+    "initializeAmmPool": 180848,
+    "mintCashToken": 96408,
+    "approveCashToken": 46800,
+    "submitOrderOB_resting": 283569,
+    "submitOrderOB_match_and_settle": 883702,
+    "cancelOrderOB": 54153,
+    "addLiquidityAMM_initial": 290820,
+    "addLiquidityAMM_subsequent": 146698,
+    "submitOrderAMM_swap": 766103,
+    "removeLiquidityAMM": 129049
+  }
+}

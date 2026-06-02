@@ -1,0 +1,36 @@
+{
+  "network": "hardhat",
+  "generatedAt": "2026-06-02T19:28:34.682Z",
+  "samples": [
+    {
+      "depth": 0,
+      "orderBookSubmitGas": 283569,
+      "ammSwapGas": 800303
+    },
+    {
+      "depth": 1,
+      "orderBookSubmitGas": 297151,
+      "ammSwapGas": 800303
+    },
+    {
+      "depth": 5,
+      "orderBookSubmitGas": 408701,
+      "ammSwapGas": 800303
+    },
+    {
+      "depth": 10,
+      "orderBookSubmitGas": 548154,
+      "ammSwapGas": 800315
+    },
+    {
+      "depth": 20,
+      "orderBookSubmitGas": 827038,
+      "ammSwapGas": 800315
+    },
+    {
+      "depth": 40,
+      "orderBookSubmitGas": 1384810,
+      "ammSwapGas": 800315
+    }
+  ]
+}
