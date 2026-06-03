@@ -1,32 +1,32 @@
 {
-  "network": "hardhat",
-  "samplesPerOp": 25,
-  "generatedAt": "2026-06-02T19:28:30.359Z",
-  "note": "In-process Hardhat. JS-overhead dominates; for paper-grade numbers run with --network besu.",
+  "network": "besu",
+  "samplesPerOp": 100,
+  "generatedAt": "2026-06-03T16:04:33.375Z",
+  "note": "Besu IBFT 2.0 (2s block period). Numbers reflect real settle latency.",
   "results": {
     "submitOrderOB_resting": {
-      "samples": 25,
-      "meanMs": 1.6,
-      "p50Ms": 2,
-      "p95Ms": 2,
-      "minMs": 1,
-      "maxMs": 2
+      "samples": 100,
+      "meanMs": 1997.97,
+      "p50Ms": 2084,
+      "p95Ms": 2097,
+      "minMs": 1565,
+      "maxMs": 2104
     },
     "submitOrderOB_match_settle": {
-      "samples": 25,
-      "meanMs": 2.96,
-      "p50Ms": 3,
-      "p95Ms": 4,
-      "minMs": 2,
-      "maxMs": 5
+      "samples": 100,
+      "meanMs": 1872.39,
+      "p50Ms": 2071,
+      "p95Ms": 2088,
+      "minMs": 1556,
+      "maxMs": 2097
     },
     "submitOrderAMM_swap": {
-      "samples": 25,
-      "meanMs": 2.68,
-      "p50Ms": 3,
-      "p95Ms": 3,
-      "minMs": 2,
-      "maxMs": 3
+      "samples": 100,
+      "meanMs": 1998.29,
+      "p50Ms": 2067,
+      "p95Ms": 2083,
+      "minMs": 1552,
+      "maxMs": 2088
     }
   }
 }
