@@ -106,6 +106,20 @@ class RealEidasProvider {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
+      // AMA-specific: Federation Authentication Assurance Level.
+      // 1 = low, 2 = substantial, 3 = high (CC+PIN or CMD with strong auth).
+      // Required by AMA inside <samlp:Extensions> for the AuthnRequest to be
+      // accepted. Default 3 per AMA integration guidance.
+      faaaLevel: String(
+        options.faaaLevel || process.env.EIDAS_FAAA_LEVEL || "3"
+      ),
+      // AMA's example uses isRequired="False" (capital F). Keep configurable
+      // so we can flip per-attribute behavior later if needed.
+      requestedAttrRequired: String(
+        options.requestedAttrRequired ||
+          process.env.EIDAS_REQUESTED_ATTR_REQUIRED ||
+          "False"
+      ),
       clockSkewSeconds: Number(
         options.clockSkewSeconds || process.env.EIDAS_CLOCK_SKEW_SECONDS || 60
       ),
@@ -160,14 +174,25 @@ class RealEidasProvider {
     const id = genId();
     const issueInstant = nowIso();
 
+    const isRequired = this.config.requestedAttrRequired;
     const attrs = this.config.requestedAttributes
       .map(
         (name) =>
-          `<fa:RequestedAttribute Name="${ATTR_URN[name]}" NameFormat="${ATTR_FORMAT}" isRequired="true" />`
+          `<fa:RequestedAttribute Name="${ATTR_URN[name]}" NameFormat="${ATTR_FORMAT}" isRequired="${isRequired}" />`
       )
       .join("");
+    // AMA-mandated structure (per Autenticação.gov integration guidance):
+    //   <samlp:Extensions>
+    //     <fa:FAAALevel xmlns:fa="...">3</fa:FAAALevel>
+    //     <fa:RequestedAttributes xmlns:fa="...">
+    //       <fa:RequestedAttribute .../>
+    //     </fa:RequestedAttributes>
+    //   </samlp:Extensions>
+    // FAAALevel must come BEFORE RequestedAttributes. Both elements declare
+    // the fa: namespace on themselves (matches AMA's reference example).
     const extensions =
       `<samlp:Extensions>` +
+      `<fa:FAAALevel xmlns:fa="${FA_NS}">${this.config.faaaLevel}</fa:FAAALevel>` +
       `<fa:RequestedAttributes xmlns:fa="${FA_NS}">${attrs}</fa:RequestedAttributes>` +
       `</samlp:Extensions>`;
 

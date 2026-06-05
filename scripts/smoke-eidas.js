@@ -172,6 +172,7 @@ if (extReqAttrs.length !== expectedAttrs.length) {
   );
 }
 ok(`fa:RequestedAttributes contains ${extReqAttrs.length} entries`);
+const expectedRequired = process.env.EIDAS_REQUESTED_ATTR_REQUIRED || "False";
 for (const node of extReqAttrs) {
   const name = node.getAttribute("Name");
   const fmt = node.getAttribute("NameFormat");
@@ -180,9 +181,21 @@ for (const node of extReqAttrs) {
     fail(`attribute Name=${name} not in interop.gov.pt URN namespace`);
   if (fmt !== "urn:oasis:names:tc:SAML:2.0:attrname-format:uri")
     fail(`attribute NameFormat=${fmt} unexpected`);
-  if (req !== "true") fail(`attribute isRequired=${req}, expected true`);
+  if (req !== expectedRequired)
+    fail(`attribute isRequired=${req}, expected ${expectedRequired}`);
 }
 ok("all RequestedAttribute entries well-formed");
+
+// AMA requires <fa:FAAALevel> inside <samlp:Extensions>, before RequestedAttributes.
+const faaaLevel = select(
+  "string(samlp:Extensions/fa:FAAALevel)",
+  root
+);
+const expectedFaaa = process.env.EIDAS_FAAA_LEVEL || "3";
+if (!faaaLevel) fail("fa:FAAALevel element missing from <samlp:Extensions>");
+if (faaaLevel !== expectedFaaa)
+  fail(`fa:FAAALevel=${faaaLevel}, expected ${expectedFaaa}`);
+ok(`fa:FAAALevel = ${faaaLevel}`);
 
 // --- signature verification (self-check with our own SP cert) --------------
 try {
