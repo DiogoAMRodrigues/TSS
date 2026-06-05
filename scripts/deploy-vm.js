@@ -302,6 +302,8 @@ function patchMiddlewareEnv() {
     EIDAS_SP_CERT_PATH: "middleware/certs/tss-saml-leaf.crt",
     EIDAS_SP_KEY_PATH: "middleware/certs/tss-saml.key",
     EIDAS_REQUESTED_ATTRIBUTES: "NIC,NomeCompleto,DataNascimento,CorreioElectronico",
+    EIDAS_REQUESTED_ATTR_REQUIRED: "False",
+    EIDAS_FAAA_LEVEL: "3",
     EIDAS_CLOCK_SKEW_SECONDS: "60",
   };
   for (const [k, v] of Object.entries(replacements)) {
