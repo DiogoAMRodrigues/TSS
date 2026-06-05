@@ -72,12 +72,12 @@ Pool reserves: 1000000 cash / 1000000 sec, fee 30 bps.
 
 ## §5.2 Wall-clock Latency per Operation
 
-Network: `hardhat`, samples per op: 25.  
-_In-process Hardhat. JS-overhead dominates; for paper-grade numbers run with --network besu._
+Network: `besu`, samples per op: 100.  
+_Besu IBFT 2.0 (2s block period). Numbers reflect real settle latency._
 
 | Operation | Mean (ms) | p50 (ms) | p95 (ms) | Min | Max |
 |---|---:|---:|---:|---:|---:|
-| submitOrderOB_resting | 1.6 | 2 | 2 | 1 | 2 |
-| submitOrderOB_match_settle | 2.96 | 3 | 4 | 2 | 5 |
-| submitOrderAMM_swap | 2.68 | 3 | 3 | 2 | 3 |
+| submitOrderOB_resting | 1997.97 | 2084 | 2097 | 1565 | 2104 |
+| submitOrderOB_match_settle | 1872.39 | 2071 | 2088 | 1556 | 2097 |
+| submitOrderAMM_swap | 1998.29 | 2067 | 2083 | 1552 | 2088 |
 
