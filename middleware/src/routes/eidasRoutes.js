@@ -229,6 +229,22 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
       if (!samlResponseB64) {
         return res.status(400).type("html").send(htmlError("Missing SAMLResponse", 400));
       }
+
+      // DIAGNOSTIC: dump the raw SAMLResponse so we can debug signature issues
+      // offline. Safe to leave on for now — the response is signed by AMA and
+      // contains user PII, so /tmp is fine but DO NOT expose this publicly.
+      try {
+        const fs = require("fs");
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        fs.writeFileSync(`/tmp/saml-response-${ts}.b64`, samlResponseB64);
+        fs.writeFileSync(
+          `/tmp/saml-response-${ts}.xml`,
+          Buffer.from(samlResponseB64, "base64").toString("utf8")
+        );
+        console.log(`[eidas] captured SAMLResponse → /tmp/saml-response-${ts}.{b64,xml}`);
+      } catch (e) {
+        console.warn("[eidas] could not write SAMLResponse capture:", e.message);
+      }
       if (!relayState || !ethers.isAddress(relayState)) {
         return res.status(400).type("html").send(htmlError("Missing/invalid RelayState (expected wallet address)", 400));
       }

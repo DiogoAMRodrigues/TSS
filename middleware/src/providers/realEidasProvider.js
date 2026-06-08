@@ -264,19 +264,65 @@ class RealEidasProvider {
 
     // 1. Signature on the Response element
     const sigNode = select("/samlp:Response/ds:Signature", doc)[0];
-    if (!sigNode) {
-      throw new Error("SAMLResponse missing top-level <ds:Signature>");
+    const assertionSigNode = select(
+      "/samlp:Response/saml:Assertion/ds:Signature",
+      doc
+    )[0];
+    if (!sigNode && !assertionSigNode) {
+      throw new Error(
+        "SAMLResponse missing <ds:Signature> on both Response and Assertion"
+      );
     }
+    const chosenSig = sigNode || assertionSigNode;
+    const sigLocation = sigNode ? "Response" : "Assertion";
     const { SignedXml: VerifyXml } = require("xml-crypto");
     const verifier = new VerifyXml({
       publicCert: this._idpCertPem(),
     });
-    verifier.loadSignature(sigNode);
-    const ok = verifier.checkSignature(xmlStr);
+    verifier.loadSignature(chosenSig);
+    let ok = false;
+    let verifyErr = null;
+    try {
+      ok = verifier.checkSignature(xmlStr);
+    } catch (e) {
+      verifyErr = e.message;
+    }
     if (!ok) {
+      // Diagnostics: cert fingerprint, embedded cert (if any), validation errors
+      const configuredFp = crypto
+        .createHash("sha256")
+        .update(this._idpCertPem())
+        .digest("hex");
+      const embeddedCertB64 =
+        select(
+          "string(.//ds:KeyInfo/ds:X509Data/ds:X509Certificate)",
+          chosenSig
+        ) || null;
+      let embeddedFp = null;
+      if (embeddedCertB64) {
+        const embeddedPem =
+          "-----BEGIN CERTIFICATE-----\n" +
+          embeddedCertB64.replace(/\s+/g, "").match(/.{1,64}/g).join("\n") +
+          "\n-----END CERTIFICATE-----\n";
+        embeddedFp = crypto
+          .createHash("sha256")
+          .update(embeddedPem)
+          .digest("hex");
+      }
+      const errs =
+        (verifier.validationErrors && verifier.validationErrors.join("; ")) ||
+        verifyErr ||
+        "no detail";
+      console.error("[eidas] signature validation FAILED");
+      console.error(`  signature location : ${sigLocation}`);
+      console.error(`  configured IdP cert: sha256=${configuredFp}`);
+      console.error(`  embedded cert       : sha256=${embeddedFp || "(none)"}`);
+      console.error(`  validationErrors    : ${errs}`);
       throw new Error(
-        "SAMLResponse signature invalid: " +
-          (verifier.getSignedReferences ? "ref mismatch" : "bad signature")
+        `SAMLResponse signature invalid (loc=${sigLocation}, ` +
+          `configuredFp=${configuredFp.slice(0, 16)}..., ` +
+          `embeddedFp=${(embeddedFp || "none").slice(0, 16)}..., ` +
+          `errors=${errs})`
       );
     }
 
