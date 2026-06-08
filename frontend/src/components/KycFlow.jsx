@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { api } from '../services/api';
 import './KycFlow.css';
@@ -12,6 +12,31 @@ export function KycFlow({ onVerificationComplete }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [challenge, setChallenge] = useState(null);
+
+  // Pick up the ?kyc=approved|failed query string the middleware redirects to
+  // after the AMA flow finishes. Once consumed, scrub it from the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const kyc = params.get('kyc');
+    if (!kyc) return;
+    if (kyc === 'approved') {
+      const tx = params.get('tx');
+      const wallet = params.get('wallet');
+      const r = params.get('role');
+      setSuccess(
+        `KYC approved via Autenticação.gov — wallet ${wallet} whitelisted as ${r}` +
+          (tx ? ` (tx ${tx.slice(0, 10)}…)` : '')
+      );
+      setStep(3);
+      if (onVerificationComplete) onVerificationComplete();
+    } else if (kyc === 'failed') {
+      const reason = params.get('reason') || 'KYC failed';
+      const status = params.get('status') || '';
+      setError(`${reason}${status ? ` (HTTP ${status})` : ''}`);
+    }
+    // Strip query params from URL without reloading
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, [onVerificationComplete]);
 
   const handleStartKyc = async () => {
     if (!identifier.trim()) {
@@ -172,9 +197,9 @@ export function KycFlow({ onVerificationComplete }) {
               className="btn btn-primary btn-large"
               onClick={handleEidasFlow}
               disabled={loading}
-              title="Real eIDAS via AMA Autenticação.gov (Cartão de Cidadão / CMD)"
+              title="Real eIDAS via AMA Autenticação.gov (Cartão de Cidadão / Chave Móvel Digital)"
             >
-              {loading ? 'Working...' : 'Continue with Cartão de Cidadão (eIDAS)'}
+              {loading ? 'Working...' : 'Continue with Autenticação.gov (CC / CMD)'}
             </button>
 
             {import.meta.env.VITE_ALLOW_SIMULATED_KYC === 'true' && (

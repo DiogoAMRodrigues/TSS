@@ -52,26 +52,47 @@ function htmlPostForm({ actionUrl, samlRequestB64, relayState }) {
 </body></html>`;
 }
 
-function htmlSuccess({ walletAddress, role, txHash }) {
+function htmlSuccess({ walletAddress, role, txHash, returnUrl }) {
   const safe = (s) =>
     String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>KYC approved</title>
+  const target = returnUrl
+    ? `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}kyc=approved` +
+      `&wallet=${encodeURIComponent(walletAddress)}` +
+      `&role=${encodeURIComponent(role)}` +
+      `&tx=${encodeURIComponent(txHash)}`
+    : null;
+  const meta = target
+    ? `<meta http-equiv="refresh" content="2;url=${safe(target)}"/>`
+    : "";
+  const link = target
+    ? `<p><a href="${safe(target)}">Return to app →</a> (auto-redirecting in 2s)</p>`
+    : `<p>You can close this window.</p>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>KYC approved</title>${meta}
 <style>body{font:14px/1.5 -apple-system,Segoe UI,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;}code{background:#f4f4f4;padding:2px 6px;border-radius:3px;}</style>
 </head><body>
 <h2>✓ KYC approved via Autenticação.gov</h2>
 <p>Wallet <code>${safe(walletAddress)}</code> has been whitelisted as <strong>${safe(role)}</strong>.</p>
 <p>On-chain tx: <code>${safe(txHash)}</code></p>
-<p>You can close this window.</p>
+${link}
 </body></html>`;
 }
 
-function htmlError(reason, status) {
-  const safe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+function htmlError(reason, status, returnUrl) {
+  const safe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const target = returnUrl
+    ? `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}kyc=failed` +
+      `&status=${encodeURIComponent(status)}` +
+      `&reason=${encodeURIComponent(reason)}`
+    : null;
+  const link = target
+    ? `<p><a href="${safe(target)}">Return to app →</a></p>`
+    : "";
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>KYC failed</title>
 <style>body{font:14px/1.5 -apple-system,Segoe UI,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;}pre{background:#fff0f0;padding:12px;border-radius:6px;white-space:pre-wrap;}</style>
 </head><body>
 <h2>✗ KYC failed (HTTP ${status})</h2>
 <pre>${safe(reason)}</pre>
+${link}
 </body></html>`;
 }
 
@@ -82,6 +103,12 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
   const requireAuth = auth?.requireAuth || (() => noAuth);
   const globalLimiter = rateLimiters?.globalLimiter || noLimit;
   const verifyLimiter = rateLimiters?.verifyLimiter || noLimit;
+
+  // Where to send the user after AMA finishes. If unset, the success/error
+  // page just tells them to close the window.
+  const frontendReturnUrl =
+    config?.frontendReturnUrl || process.env.EIDAS_FRONTEND_RETURN_URL || null;
+  const errPage = (msg, status) => htmlError(msg, status, frontendReturnUrl);
 
   // AMA ACS callback must accept x-www-form-urlencoded (SAML POST binding).
   // app.js uses express.json() globally — add urlencoded only on this router.
@@ -173,10 +200,10 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
         } = req.query || {};
 
         if (!walletAddress || !ethers.isAddress(walletAddress)) {
-          return res.status(400).type("html").send(htmlError("Valid walletAddress is required", 400));
+          return res.status(400).type("html").send(errPage("Valid walletAddress is required", 400));
         }
         if (!signature) {
-          return res.status(400).type("html").send(htmlError("signature query param is required", 400));
+          return res.status(400).type("html").send(errPage("signature query param is required", 400));
         }
 
         // Wallet ownership proof — same as POST /api/kyc/verify
@@ -185,7 +212,7 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
         const key = toKey(walletAddress);
         const caseData = kycCases.get(key);
         if (!caseData) {
-          return res.status(400).type("html").send(htmlError("No pending KYC request — call POST /api/kyc/request first", 400));
+          return res.status(400).type("html").send(errPage("No pending KYC request — call POST /api/kyc/request first", 400));
         }
 
         const parsedAttestationDays = parseAttestationDays(attestationDays, config.attestationDays);
@@ -216,7 +243,7 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
             })
           );
       } catch (error) {
-        return res.status(400).type("html").send(htmlError(error.message, 400));
+        return res.status(400).type("html").send(errPage(error.message, 400));
       }
     }
   );
@@ -227,7 +254,7 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
       const samlResponseB64 = req.body?.SAMLResponse;
       const relayState = req.body?.RelayState;
       if (!samlResponseB64) {
-        return res.status(400).type("html").send(htmlError("Missing SAMLResponse", 400));
+        return res.status(400).type("html").send(errPage("Missing SAMLResponse", 400));
       }
 
       // DIAGNOSTIC: dump the raw SAMLResponse so we can debug signature issues
@@ -246,13 +273,13 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
         console.warn("[eidas] could not write SAMLResponse capture:", e.message);
       }
       if (!relayState || !ethers.isAddress(relayState)) {
-        return res.status(400).type("html").send(htmlError("Missing/invalid RelayState (expected wallet address)", 400));
+        return res.status(400).type("html").send(errPage("Missing/invalid RelayState (expected wallet address)", 400));
       }
       const walletAddress = relayState;
       const key = toKey(walletAddress);
       const caseData = kycCases.get(key);
       if (!caseData || caseData.status !== "pending_eidas") {
-        return res.status(400).type("html").send(htmlError(`No pending eIDAS case for ${walletAddress}`, 400));
+        return res.status(400).type("html").send(errPage(`No pending eIDAS case for ${walletAddress}`, 400));
       }
 
       // 1. Validate signature + conditions, extract attributes
@@ -276,7 +303,7 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
         kycCases.set(key, caseData);
         writeAudit({ action: "eidas_rejected", walletAddress, reason: result.reason });
         persistNow();
-        return res.status(403).type("html").send(htmlError(result.reason, 403));
+        return res.status(403).type("html").send(errPage(result.reason, 403));
       }
 
       // 3. Whitelist on chain + optional attestation (mirror kycRoutes /verify)
@@ -323,9 +350,9 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
       return res
         .status(200)
         .type("html")
-        .send(htmlSuccess({ walletAddress, role: whitelistTx.role, txHash: whitelistTx.txHash }));
+        .send(htmlSuccess({ walletAddress, role: whitelistTx.role, txHash: whitelistTx.txHash, returnUrl: frontendReturnUrl }));
     } catch (error) {
-      return res.status(400).type("html").send(htmlError(error.message, 400));
+      return res.status(400).type("html").send(errPage(error.message, 400));
     }
   });
 
