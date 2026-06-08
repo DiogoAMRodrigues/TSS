@@ -267,7 +267,7 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
     }
   });
 
-  router.get("/users/:walletAddress", requireAuth([ROLES.OPERATOR, ROLES.REGULATOR]), async (req, res) => {
+  router.get("/users/:walletAddress", requireAuth([ROLES.CLIENT, ROLES.OPERATOR, ROLES.REGULATOR]), async (req, res) => {
     try {
       const walletAddress = req.params.walletAddress;
       if (!ethers.isAddress(walletAddress)) {
