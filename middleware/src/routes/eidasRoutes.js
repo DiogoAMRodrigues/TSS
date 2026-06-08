@@ -88,6 +88,74 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
   router.use(express.urlencoded({ extended: false, limit: "1mb" }));
   router.use(globalLimiter);
 
+  // -------- /eidas/sample-authnrequest (public debug) ---------------------
+  // No auth, no kycCase needed. Builds a signed AuthnRequest with a dummy
+  // RelayState so AMA (or anyone) can inspect <samlp:Extensions>,
+  // <fa:FAAALevel>, <fa:RequestedAttributes>, signature, etc.
+  // Use ?format=base64 to get the wire-format value, or ?format=html to
+  // get the auto-submit form that would be POSTed to the IdP.
+  router.get("/sample-authnrequest", (req, res) => {
+    try {
+      const { base64, xml, id, relayState } = providerAdapter.buildAuthnRequest({
+        relayState: "0x0000000000000000000000000000000000000000",
+      });
+      const format = String(req.query?.format || "xml").toLowerCase();
+      if (format === "base64") {
+        return res.status(200).type("text/plain").send(base64);
+      }
+      if (format === "html") {
+        return res
+          .status(200)
+          .type("html")
+          .send(
+            htmlPostForm({
+              actionUrl: providerAdapter.config.idpEntryPoint,
+              samlRequestB64: base64,
+              relayState,
+            })
+          );
+      }
+      return res.status(200).type("application/xml").send(xml);
+    } catch (error) {
+      return res.status(500).type("text/plain").send(`error: ${error.message}`);
+    }
+  });
+
+  // -------- /eidas/metadata (public SP metadata, best-effort) -------------
+  // Some IdPs (and operators) expect SAML 2.0 SP metadata at a stable URL.
+  // We emit a minimal descriptor with our entityID, ACS, SLO and signing cert.
+  router.get("/metadata", (_req, res) => {
+    try {
+      const c = providerAdapter.config;
+      const certB64 = c._spCertB64 || "";
+      const sloUrl = c.spSloUrl || "";
+      const xml =
+        `<?xml version="1.0" encoding="UTF-8"?>` +
+        `<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" ` +
+        `xmlns:ds="http://www.w3.org/2000/09/xmldsig#" ` +
+        `entityID="${c.spEntityId}">` +
+        `<md:SPSSODescriptor AuthnRequestsSigned="true" WantAssertionsSigned="true" ` +
+        `protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">` +
+        (certB64
+          ? `<md:KeyDescriptor use="signing"><ds:KeyInfo><ds:X509Data>` +
+            `<ds:X509Certificate>${certB64}</ds:X509Certificate>` +
+            `</ds:X509Data></ds:KeyInfo></md:KeyDescriptor>`
+          : "") +
+        (sloUrl
+          ? `<md:SingleLogoutService ` +
+            `Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" ` +
+            `Location="${sloUrl}"/>`
+          : "") +
+        `<md:AssertionConsumerService ` +
+        `Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" ` +
+        `Location="${c.spAcsUrl}" index="0" isDefault="true"/>` +
+        `</md:SPSSODescriptor></md:EntityDescriptor>`;
+      return res.status(200).type("application/samlmetadata+xml").send(xml);
+    } catch (error) {
+      return res.status(500).type("text/plain").send(`error: ${error.message}`);
+    }
+  });
+
   // -------- /eidas/start --------------------------------------------------
   // Auth on the entry point (wallet-signed challenge), but not on /callback —
   // AMA's POST won't carry our API key.
