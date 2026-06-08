@@ -294,7 +294,7 @@ function patchMiddlewareEnv() {
     EIDAS_PROVIDER: "real",
     // ----- eIDAS / AMA preprod (real provider requires all of these) -----
     EIDAS_IDP_ENTRY_POINT: "https://preprod.autenticacao.gov.pt/fa/Default.aspx",
-    EIDAS_IDP_CERT_PATH: "middleware/certs/ama-preprod-ca.crt",
+    EIDAS_IDP_CERT_PATH: "middleware/certs/ama-preprod-idp.crt",
     EIDAS_SP_ENTITY_ID: "https://tss.dpss.inesc-id.pt",
     EIDAS_SP_PROVIDER_NAME: "TSS - Instituto Superior Técnico",
     EIDAS_SP_ACS_URL: "https://tss.dpss.inesc-id.pt/api/kyc/eidas/callback",
@@ -305,6 +305,7 @@ function patchMiddlewareEnv() {
     EIDAS_REQUESTED_ATTR_REQUIRED: "False",
     EIDAS_FAAA_LEVEL: "3",
     EIDAS_CLOCK_SKEW_SECONDS: "60",
+    EIDAS_FRONTEND_RETURN_URL: "http://localhost:5173/",
   };
   for (const [k, v] of Object.entries(replacements)) {
     const re = new RegExp(`^${k}=.*$`, "m");
