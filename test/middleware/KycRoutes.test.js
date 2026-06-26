@@ -497,15 +497,21 @@ describe("Middleware: kycRoutes", function () {
     expect(response.body.error).to.equal("Invalid wallet address");
   });
 
-  it("audit endpoint returns entries and supports pagination", async function () {
+  it("audit endpoint returns entries newest-first and supports pagination", async function () {
     auditLog.push({ id: 1, timestamp: new Date().toISOString(), action: "a" });
     auditLog.push({ id: 2, timestamp: new Date().toISOString(), action: "b" });
 
-    const response = await request(app).get("/api/kyc/audit?limit=1&offset=1");
+    // Entries are returned in reverse-chronological order (newest first),
+    // so offset=0 -> "b" (newest) and offset=1 -> "a" (second-newest).
+    const newest = await request(app).get("/api/kyc/audit?limit=1&offset=0");
+    expect(newest.status).to.equal(200);
+    expect(newest.body.entries).to.have.length(1);
+    expect(newest.body.entries[0].action).to.equal("b");
 
+    const response = await request(app).get("/api/kyc/audit?limit=1&offset=1");
     expect(response.status).to.equal(200);
     expect(response.body.entries).to.have.length(1);
-    expect(response.body.entries[0].action).to.equal("b");
+    expect(response.body.entries[0].action).to.equal("a");
   });
 
   it("audit endpoint caps limit to 200 entries", async function () {
