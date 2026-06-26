@@ -21,15 +21,21 @@ describe("Middleware: IdentityClient", function () {
 
   it("throws when required env values are missing", function () {
     const previousKey = process.env.OPERATOR_PRIVATE_KEY;
+    const previousKeyFile = process.env.OPERATOR_PRIVATE_KEY_FILE;
     const previousAddress = process.env.IDENTITY_ADDRESS;
 
     delete process.env.OPERATOR_PRIVATE_KEY;
+    delete process.env.OPERATOR_PRIVATE_KEY_FILE;
     delete process.env.IDENTITY_ADDRESS;
 
     expect(() => new IdentityClient()).to.throw("OPERATOR_PRIVATE_KEY is required");
 
-    process.env.OPERATOR_PRIVATE_KEY = previousKey;
-    process.env.IDENTITY_ADDRESS = previousAddress;
+    if (previousKey === undefined) delete process.env.OPERATOR_PRIVATE_KEY;
+    else process.env.OPERATOR_PRIVATE_KEY = previousKey;
+    if (previousKeyFile === undefined) delete process.env.OPERATOR_PRIVATE_KEY_FILE;
+    else process.env.OPERATOR_PRIVATE_KEY_FILE = previousKeyFile;
+    if (previousAddress === undefined) delete process.env.IDENTITY_ADDRESS;
+    else process.env.IDENTITY_ADDRESS = previousAddress;
   });
 
   it("throws when private key format is invalid", function () {
