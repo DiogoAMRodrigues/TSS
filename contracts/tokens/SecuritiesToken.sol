@@ -106,14 +106,14 @@ contract SecuritiesToken is ITokenTransfer {
         require(_identity.isWhitelisted(to), "SecuritiesToken: recipient not whitelisted");
         _totalSupply += amount;
         _balances[to] += amount;
-        emit TokensMinted(to, amount);
+        emit Transfer(address(0), to, amount);
     }
 
     function burn(address from, uint256 amount) external override whenNotPaused onlyOperator {
         require(_balances[from] >= amount, "SecuritiesToken: insufficient balance");
         _balances[from] -= amount;
         _totalSupply -= amount;
-        emit TokensBurned(from, amount);
+        emit Transfer(from, address(0), amount);
     }
 
     function balanceOf(address account) external view override returns (uint256) {
@@ -151,6 +151,6 @@ contract SecuritiesToken is ITokenTransfer {
         require(_balances[from] >= amount, "SecuritiesToken: insufficient balance");
         _balances[from] -= amount;
         _balances[to] += amount;
-        emit TokensTransferred(from, to, amount);
+        emit Transfer(from, to, amount);
     }
 }

@@ -1,6 +1,6 @@
 {
   "network": "hardhat",
-  "generatedAt": "2026-06-02T19:28:34.682Z",
+  "generatedAt": "2026-06-26T16:40:42.812Z",
   "samples": [
     {
       "depth": 0,
@@ -9,13 +9,13 @@
     },
     {
       "depth": 1,
-      "orderBookSubmitGas": 297151,
-      "ammSwapGas": 800303
+      "orderBookSubmitGas": 297163,
+      "ammSwapGas": 800315
     },
     {
       "depth": 5,
-      "orderBookSubmitGas": 408701,
-      "ammSwapGas": 800303
+      "orderBookSubmitGas": 408713,
+      "ammSwapGas": 800315
     },
     {
       "depth": 10,
@@ -29,8 +29,8 @@
     },
     {
       "depth": 40,
-      "orderBookSubmitGas": 1384810,
-      "ammSwapGas": 800315
+      "orderBookSubmitGas": 1384798,
+      "ammSwapGas": 800303
     }
   ]
 }

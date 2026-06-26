@@ -376,29 +376,29 @@ describe("CashToken", function () {
   });
 
   describe("Events", function () {
-    it("should emit TokensMinted on mint", async function () {
+    it("should emit Transfer from zero address on mint", async function () {
       const tx = await cashToken.mint(trader1.address, ONE_TOKEN);
       await tx.wait();
       await expect(tx)
-        .to.emit(cashToken, "TokensMinted")
-        .withArgs(trader1.address, ONE_TOKEN);
+        .to.emit(cashToken, "Transfer")
+        .withArgs(ethers.ZeroAddress, trader1.address, ONE_TOKEN);
     });
 
-    it("should emit TokensBurned on burn", async function () {
+    it("should emit Transfer to zero address on burn", async function () {
       await send(cashToken.mint(trader1.address, ONE_TOKEN));
       const tx = await cashToken.burn(trader1.address, ONE_TOKEN);
       await tx.wait();
       await expect(tx)
-        .to.emit(cashToken, "TokensBurned")
-        .withArgs(trader1.address, ONE_TOKEN);
+        .to.emit(cashToken, "Transfer")
+        .withArgs(trader1.address, ethers.ZeroAddress, ONE_TOKEN);
     });
 
-    it("should emit TokensTransferred on transfer", async function () {
+    it("should emit Transfer on transfer", async function () {
       await send(cashToken.mint(trader1.address, ONE_TOKEN));
       const tx = await cashToken.connect(trader1).transfer(trader2.address, ONE_TOKEN);
       await tx.wait();
       await expect(tx)
-        .to.emit(cashToken, "TokensTransferred")
+        .to.emit(cashToken, "Transfer")
         .withArgs(trader1.address, trader2.address, ONE_TOKEN);
     });
 

@@ -10,9 +10,7 @@ pragma solidity ^0.8.20;
 interface ITokenTransfer {
 
     // --- Events ---
-    event TokensTransferred(address indexed from, address indexed to, uint256 amount);
-    event TokensMinted(address indexed to, uint256 amount);
-    event TokensBurned(address indexed from, uint256 amount);
+    event Transfer(address indexed from, address indexed to, uint256 value);
 
     // --- Functions ---
 

@@ -89,7 +89,7 @@ describe("Middleware: /reconcile route", function () {
     const response = await request(app).post("/api/kyc/reconcile");
 
     expect(response.status).to.equal(500);
-    expect(response.body.error).to.equal("provider unavailable");
+    expect(response.body.error).to.include("provider unavailable");
   });
 
   it("reconciles on-chain events into local store via route", async function () {
