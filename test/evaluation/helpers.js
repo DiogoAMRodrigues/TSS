@@ -104,9 +104,9 @@ async function deployCore() {
   gas.deployCashToken = Number((await cashToken.deploymentTransaction().wait()).gasUsed);
 
   // Whitelist the standard test actors as TRADERs.
-  gas.whitelistTrader = await gasOf(identityDeployTx.whitelist(buyer.address, TRADER_ROLE));
-  await send(identityDeployTx.whitelist(seller.address, TRADER_ROLE));
-  await send(identityDeployTx.whitelist(lp.address, TRADER_ROLE));
+  gas.whitelistTrader = await gasOf(identityDeployTx.whitelist(buyer.address, TRADER_ROLE, ethers.ZeroHash));
+  await send(identityDeployTx.whitelist(seller.address, TRADER_ROLE, ethers.ZeroHash));
+  await send(identityDeployTx.whitelist(lp.address, TRADER_ROLE, ethers.ZeroHash));
 
   // Register both assets.
   gas.registerAssetCash = await gasOf(
@@ -154,7 +154,7 @@ async function deployAmm(core, feeBps = 30) {
   );
   await amm.waitForDeployment();
   const deployGas = Number((await amm.deploymentTransaction().wait()).gasUsed);
-  await send(core.identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+  await send(core.identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
   const authGas = await gasOf(core.settlement.authorizeEngine(await amm.getAddress()));
   const initGas = await gasOf(
     amm.initializePool(await core.cashToken.getAddress(), await core.securitiesToken.getAddress())
@@ -173,7 +173,7 @@ async function createFundedTraders(core, count) {
   for (let i = 0; i < count; i++) {
     const w = ethers.Wallet.createRandom().connect(ethers.provider);
     await deployer.sendTransaction({ to: w.address, value: ethers.parseEther("1") });
-    await send(core.identity.whitelist(w.address, TRADER_ROLE));
+    await send(core.identity.whitelist(w.address, TRADER_ROLE, ethers.ZeroHash));
     traders.push(w);
   }
   return traders;

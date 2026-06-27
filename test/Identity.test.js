@@ -11,6 +11,7 @@ describe("Identity", function () {
   const ISSUER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ISSUER"));
   const REGULATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("REGULATOR"));
   const ERC20_TYPE = ethers.encodeBytes32String("ERC20");
+  const ATTESTATION_HASH = ethers.sha256(ethers.toUtf8Bytes("identity|wallet|salt"));
 
   async function send(txPromise) {
     const tx = await txPromise;
@@ -85,38 +86,38 @@ describe("Identity", function () {
 
   describe("Whitelisting", function () {
     it("should allow operator to whitelist a TRADER", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
       expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
     });
 
     it("should allow operator to whitelist an ISSUER", async function () {
-      await send(identity.whitelist(trader.address, ISSUER_ROLE));
+      await send(identity.whitelist(trader.address, ISSUER_ROLE, ATTESTATION_HASH));
       expect(await identity.getRole(trader.address)).to.equal(ISSUER_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should allow operator to whitelist a REGULATOR", async function () {
-      await send(identity.whitelist(trader.address, REGULATOR_ROLE));
+      await send(identity.whitelist(trader.address, REGULATOR_ROLE, ATTESTATION_HASH));
       expect(await identity.getRole(trader.address)).to.equal(REGULATOR_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should allow operator to whitelist another OPERATOR", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       expect(await identity.getRole(operator2.address)).to.equal(OPERATOR_ROLE);
       expect(await identity.isWhitelisted(operator2.address)).to.be.true;
     });
 
     it("should allow a newly whitelisted OPERATOR to whitelist others", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
-      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
+      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should overwrite role when whitelisting same address twice", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
-      await send(identity.whitelist(trader.address, ISSUER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
+      await send(identity.whitelist(trader.address, ISSUER_ROLE, ATTESTATION_HASH));
       expect(await identity.getRole(trader.address)).to.equal(ISSUER_ROLE);
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
@@ -127,47 +128,47 @@ describe("Identity", function () {
 
     it("should reject whitelisting from non-operator", async function () {
       await expect(
-        identity.connect(stranger).whitelist(trader.address, TRADER_ROLE)
+        identity.connect(stranger).whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH)
       ).to.be.revertedWith("Identity: caller is not an operator");
     });
 
     it("should reject zero address", async function () {
       await expect(
-        identity.whitelist(ethers.ZeroAddress, TRADER_ROLE)
+        identity.whitelist(ethers.ZeroAddress, TRADER_ROLE, ATTESTATION_HASH)
       ).to.be.revertedWith("Identity: zero address");
     });
 
     it("should reject invalid role", async function () {
       const INVALID_ROLE = ethers.keccak256(ethers.toUtf8Bytes("INVALID"));
       await expect(
-        identity.whitelist(trader.address, INVALID_ROLE)
+        identity.whitelist(trader.address, INVALID_ROLE, ATTESTATION_HASH)
       ).to.be.revertedWith("Identity: invalid role");
     });
   });
 
   describe("Revocation", function () {
     it("should allow operator to revoke a user", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(trader.address));
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
     });
 
     it("should not allow revoked user to be treated as whitelisted", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(trader.address));
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
     });
 
     it("should not allow revoked OPERATOR to whitelist others", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(operator2.address));
       await expect(
-        identity.connect(operator2).whitelist(trader.address, TRADER_ROLE)
+        identity.connect(operator2).whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH)
       ).to.be.revertedWith("Identity: caller is not an operator");
     });
 
     it("should reject revocation from non-operator", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await expect(
         identity.connect(stranger).revoke(trader.address)
       ).to.be.revertedWith("Identity: caller is not an operator");
@@ -180,22 +181,22 @@ describe("Identity", function () {
     });
 
     it("should return zero bytes32 for getRole after revocation", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(trader.address));
       expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
     });
 
     it("should reset role cleanly when re-whitelisting after revocation", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(operator2.address));
       expect(await identity.getRole(operator2.address)).to.equal(ethers.ZeroHash);
-      await send(identity.whitelist(operator2.address, TRADER_ROLE));
+      await send(identity.whitelist(operator2.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.getRole(operator2.address)).to.equal(TRADER_ROLE);
       expect(await identity.isWhitelisted(operator2.address)).to.be.true;
     });
 
     it("should prevent revoked operator from registering assets in Registry", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(operator2.address));
       await expect(
         registry.connect(operator2).registerAsset(stranger.address, ERC20_TYPE, deployer.address)
@@ -204,7 +205,7 @@ describe("Identity", function () {
 
     it("should prevent revoked operator from deactivating assets in Registry", async function () {
       await send(registry.registerAsset(stranger.address, ERC20_TYPE, deployer.address));
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(operator2.address));
       await expect(
         registry.connect(operator2).deactivateAsset(stranger.address)
@@ -214,7 +215,7 @@ describe("Identity", function () {
 
   describe("Attestation", function () {
     it("should allow operator to update attestation expiry", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const newExpiry = await futureTs(365 * 24 * 60 * 60 * 2);
       await send(identity.updateAttestation(trader.address, newExpiry));
       expect(await identity.isExpired(trader.address)).to.be.false;
@@ -228,7 +229,7 @@ describe("Identity", function () {
     });
 
     it("should reject expiry in the past", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const pastExpiry = (await latestTs()) - 1000;
       await expect(
         identity.updateAttestation(trader.address, pastExpiry)
@@ -236,7 +237,7 @@ describe("Identity", function () {
     });
 
     it("should reject expiry equal to current block timestamp", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       await expect(
         identity.updateAttestation(trader.address, block.timestamp)
@@ -244,7 +245,7 @@ describe("Identity", function () {
     });
 
     it("should reject updating attestation from non-operator", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.connect(stranger).updateAttestation(trader.address, newExpiry)
@@ -263,7 +264,7 @@ describe("Identity", function () {
 
   describe("Expiry Behavior", function () {
     it("should mark user as not whitelisted after expiry", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
@@ -273,18 +274,18 @@ describe("Identity", function () {
     });
 
     it("should allow re-whitelisting after expiry", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
       await waitForExpiry(nearExpiry);
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should return zero bytes32 for getRole after expiry", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(trader.address, nearExpiry));
@@ -293,7 +294,7 @@ describe("Identity", function () {
     });
 
     it("should prevent expired operator from registering assets in Registry", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(operator2.address, nearExpiry));
@@ -311,19 +312,19 @@ describe("Identity", function () {
 
     it("should allow user to opt out and force full reverification", async function () {
       await send(identity.connect(trader).setReverificationPreference(false));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
 
       const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, newExpiry)
       ).to.be.revertedWith("Identity: user requires full reverification");
 
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
     });
 
     it("should allow user to switch back to easy reverification", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.connect(trader).setReverificationPreference(false));
 
       const firstExpiry = await futureTs(365 * 24 * 60 * 60);
@@ -339,9 +340,9 @@ describe("Identity", function () {
 
     it("should preserve strict preference across revoke and re-whitelist", async function () {
       await send(identity.connect(trader).setReverificationPreference(false));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(trader.address));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
 
       const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
@@ -353,7 +354,7 @@ describe("Identity", function () {
       await send(identity.connect(trader).setReverificationPreference(false));
       expect(await identity.prefersEasyReverification(trader.address)).to.be.false;
 
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const newExpiry = await futureTs(365 * 24 * 60 * 60);
       await expect(
         identity.updateAttestation(trader.address, newExpiry)
@@ -362,7 +363,7 @@ describe("Identity", function () {
 
     it("strict preference should not block unrelated identity flows", async function () {
       await send(identity.connect(trader).setReverificationPreference(false));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
 
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
       expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
@@ -371,16 +372,16 @@ describe("Identity", function () {
       expect(await identity.isWhitelisted(trader.address)).to.be.false;
       expect(await identity.getRole(trader.address)).to.equal(ethers.ZeroHash);
 
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
       expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
     });
 
     it("should preserve explicit easy preference across revoke and re-whitelist", async function () {
       await send(identity.connect(trader).setReverificationPreference(true));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       await send(identity.revoke(trader.address));
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
 
       expect(await identity.prefersEasyReverification(trader.address)).to.be.true;
       const newExpiry = await futureTs(365 * 24 * 60 * 60);
@@ -389,7 +390,7 @@ describe("Identity", function () {
     });
 
     it("should allow strict operator to regain privileges only after full re-whitelist", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
       const block = await ethers.provider.getBlock("latest");
       await send(identity.updateAttestation(operator2.address, block.timestamp + 10));
       await send(identity.connect(operator2).setReverificationPreference(false));
@@ -397,13 +398,41 @@ describe("Identity", function () {
       await waitForExpiry(block.timestamp + 10);
 
       await expect(
-        identity.connect(operator2).whitelist(trader.address, TRADER_ROLE)
+        identity.connect(operator2).whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH)
       ).to.be.revertedWith("Identity: caller is not an operator");
 
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
-      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ATTESTATION_HASH));
+      await send(identity.connect(operator2).whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       expect(await identity.isWhitelisted(trader.address)).to.be.true;
       expect(await identity.getRole(trader.address)).to.equal(TRADER_ROLE);
+    });
+  });
+
+  describe("Attestation Hash", function () {
+    it("should store the attestation hash supplied at whitelist time", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
+      expect(await identity.getAttestationHash(trader.address)).to.equal(ATTESTATION_HASH);
+    });
+
+    it("should return the zero hash for a never-whitelisted address", async function () {
+      expect(await identity.getAttestationHash(stranger.address)).to.equal(ethers.ZeroHash);
+    });
+
+    it("should clear the attestation hash on revocation", async function () {
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
+      await send(identity.revoke(trader.address));
+      expect(await identity.getAttestationHash(trader.address)).to.equal(ethers.ZeroHash);
+    });
+
+    it("should overwrite the attestation hash when re-whitelisting", async function () {
+      const secondHash = ethers.sha256(ethers.toUtf8Bytes("second|wallet|salt"));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, secondHash));
+      expect(await identity.getAttestationHash(trader.address)).to.equal(secondHash);
+    });
+
+    it("should keep the deployer bootstrap attestation hash at zero", async function () {
+      expect(await identity.getAttestationHash(deployer.address)).to.equal(ethers.ZeroHash);
     });
   });
 
@@ -459,15 +488,15 @@ describe("Identity", function () {
 
   describe("Events", function () {
     it("should emit UserWhitelisted on whitelist", async function () {
-      const tx = await identity.whitelist(trader.address, TRADER_ROLE);
+      const tx = await identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH);
       await tx.wait();
       await expect(tx)
         .to.emit(identity, "UserWhitelisted")
-        .withArgs(trader.address, TRADER_ROLE);
+        .withArgs(trader.address, TRADER_ROLE, ATTESTATION_HASH);
     });
 
     it("should emit UserRevoked on revoke", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const tx = await identity.revoke(trader.address);
       await tx.wait();
       await expect(tx)
@@ -476,7 +505,7 @@ describe("Identity", function () {
     });
 
     it("should emit AttestationUpdated on updateAttestation", async function () {
-      await send(identity.whitelist(trader.address, TRADER_ROLE));
+      await send(identity.whitelist(trader.address, TRADER_ROLE, ATTESTATION_HASH));
       const newExpiry = await futureTs(365 * 24 * 60 * 60 * 2);
       const tx = await identity.updateAttestation(trader.address, newExpiry);
       await tx.wait();

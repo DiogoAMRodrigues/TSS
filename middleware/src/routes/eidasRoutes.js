@@ -22,6 +22,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { verifySignedChallenge } = require("../services/challengeService");
+const { computeAttestationHash, generateAttestationSalt } = require("../services/identityClient");
 const { kycCases, users, toKey, writeAudit, persistNow } = require("../state/store");
 const { ROLES } = require("../security/auth");
 
@@ -308,7 +309,14 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
 
       // 3. Whitelist on chain + optional attestation (mirror kycRoutes /verify)
       const role = result.role || caseData.eidas.requestedRole;
-      const whitelistTx = await identityClient.whitelist(walletAddress, role);
+      const attestationSalt = generateAttestationSalt();
+      const attestationSubject = samlAttributes.nic || result.evidenceId || walletAddress;
+      const attestationHash = computeAttestationHash({
+        walletAddress,
+        subject: attestationSubject,
+        salt: attestationSalt,
+      });
+      const whitelistTx = await identityClient.whitelist(walletAddress, role, attestationHash);
 
       let attestationTx = null;
       let expiryUnixSeconds = null;
@@ -323,6 +331,8 @@ function createEidasRouter({ identityClient, providerAdapter, config, auth, rate
         role: whitelistTx.role,
         provider: result.provider,
         evidenceId: result.evidenceId,
+        attestationHash,
+        attestationSalt,
         easyReverification: easy,
         kycStatus: "approved",
         nic: samlAttributes.nic,

@@ -24,9 +24,9 @@ describe("CashToken", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await send(identity.whitelist(trader1.address, TRADER_ROLE));
-    await send(identity.whitelist(trader2.address, TRADER_ROLE));
-    await send(identity.whitelist(issuer.address, ISSUER_ROLE));
+    await send(identity.whitelist(trader1.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(trader2.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(issuer.address, ISSUER_ROLE, ethers.ZeroHash));
 
     const CashToken = await ethers.getContractFactory("CashToken");
     cashToken = await CashToken.deploy(

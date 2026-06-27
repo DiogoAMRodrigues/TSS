@@ -62,7 +62,7 @@ describe("AMM", function () {
   }
 
   async function bootstrapPool() {
-    await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+    await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
     await send(settlement.authorizeEngine(await amm.getAddress()));
     if (!(await amm.poolInitialized())) {
       await send(amm.initializePool(await cashToken.getAddress(), await securitiesToken.getAddress()));
@@ -84,9 +84,9 @@ describe("AMM", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await send(identity.whitelist(lp.address, TRADER_ROLE));
-    await send(identity.whitelist(trader.address, TRADER_ROLE));
-    await send(identity.whitelist(seller.address, TRADER_ROLE));
+    await send(identity.whitelist(lp.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(trader.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(seller.address, TRADER_ROLE, ethers.ZeroHash));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());
@@ -226,7 +226,7 @@ describe("AMM", function () {
       await send(cashToken.connect(lp).approve(await amm.getAddress(), HUNDRED));
       await send(securitiesToken.connect(lp).approve(await amm.getAddress(), HUNDRED));
 
-      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
       await send(amm.connect(lp).addLiquidity(HUNDRED, HUNDRED));
 
       expect(await amm.reserveCash()).to.equal(HUNDRED);
@@ -240,7 +240,7 @@ describe("AMM", function () {
       await send(securitiesToken.mint(lp.address, TEN));
       await send(cashToken.connect(lp).approve(await amm.getAddress(), TEN));
       await send(securitiesToken.connect(lp).approve(await amm.getAddress(), TEN));
-      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
 
       const evt = await getEventFromTx(
         amm.connect(lp).addLiquidity(TEN, TEN),
@@ -258,7 +258,7 @@ describe("AMM", function () {
       await send(securitiesToken.mint(lp.address, TEN));
       await send(cashToken.connect(lp).approve(await amm.getAddress(), TEN));
       await send(securitiesToken.connect(lp).approve(await amm.getAddress(), TEN));
-      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
 
       await expect(
         amm.connect(lp).addLiquidity(0, TEN)
@@ -270,7 +270,7 @@ describe("AMM", function () {
       await send(securitiesToken.mint(lp.address, TEN));
       await send(cashToken.connect(lp).approve(await amm.getAddress(), TEN));
       await send(securitiesToken.connect(lp).approve(await amm.getAddress(), TEN));
-      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+      await send(identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
       await send(identity.revoke(lp.address));
 
       await expect(

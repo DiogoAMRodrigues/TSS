@@ -24,8 +24,8 @@ describe("Settlement", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await send(identity.whitelist(buyer.address, TRADER_ROLE));
-    await send(identity.whitelist(seller.address, TRADER_ROLE));
+    await send(identity.whitelist(buyer.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(seller.address, TRADER_ROLE, ethers.ZeroHash));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());

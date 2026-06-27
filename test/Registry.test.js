@@ -47,7 +47,7 @@ describe("Registry", function () {
     identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await send(identity.whitelist(issuer.address, ISSUER_ROLE));
+    await send(identity.whitelist(issuer.address, ISSUER_ROLE, ethers.ZeroHash));
 
     const Registry = await ethers.getContractFactory("Registry");
     registry = await Registry.deploy(await identity.getAddress());
@@ -147,7 +147,7 @@ describe("Registry", function () {
     });
 
     it("should reject registration from revoked operator", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ethers.ZeroHash));
       await send(identity.revoke(operator2.address));
       await expect(
         registry.connect(operator2).registerAsset(addr1.address, ERC20_TYPE, issuer.address)
@@ -155,7 +155,7 @@ describe("Registry", function () {
     });
 
     it("should reject registration from expired operator", async function () {
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ethers.ZeroHash));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(operator2.address, nearExpiry));
@@ -204,7 +204,7 @@ describe("Registry", function () {
 
     it("should reject deactivation from revoked operator", async function () {
       await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ethers.ZeroHash));
       await send(identity.revoke(operator2.address));
       await expect(
         registry.connect(operator2).deactivateAsset(addr1.address)
@@ -213,7 +213,7 @@ describe("Registry", function () {
 
     it("should reject deactivation from expired operator", async function () {
       await send(registry.registerAsset(addr1.address, ERC20_TYPE, issuer.address));
-      await send(identity.whitelist(operator2.address, OPERATOR_ROLE));
+      await send(identity.whitelist(operator2.address, OPERATOR_ROLE, ethers.ZeroHash));
       const block = await ethers.provider.getBlock("latest");
       const nearExpiry = block.timestamp + 10;
       await send(identity.updateAttestation(operator2.address, nearExpiry));

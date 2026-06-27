@@ -4,6 +4,7 @@ const { ethers } = require("ethers");
 
 const IdentityClient = require("../../middleware/src/services/identityClient");
 const { normalizeRole } = require("../../middleware/src/services/identityClient");
+const { computeAttestationHash, generateAttestationSalt } = require("../../middleware/src/services/identityClient");
 
 describe("Middleware: IdentityClient", function () {
   afterEach(function () {
@@ -82,14 +83,52 @@ describe("Middleware: IdentityClient", function () {
     });
 
     const walletAddress = "0x0000000000000000000000000000000000000002";
-    const result = await client.whitelist(walletAddress, "TRADER");
+    const attestationHash = ethers.sha256(ethers.toUtf8Bytes("subject"));
+    const result = await client.whitelist(walletAddress, "TRADER", attestationHash);
 
     expect(contract.whitelist.calledOnce).to.equal(true);
     expect(contract.whitelist.firstCall.args[0]).to.equal(walletAddress);
     expect(contract.whitelist.firstCall.args[1]).to.equal(
       ethers.keccak256(ethers.toUtf8Bytes("TRADER"))
     );
-    expect(result).to.deep.equal({ txHash: "0xabc", blockNumber: 42, role: "TRADER" });
+    expect(contract.whitelist.firstCall.args[2]).to.equal(attestationHash);
+    expect(result).to.deep.equal({ txHash: "0xabc", blockNumber: 42, role: "TRADER", attestationHash });
+  });
+
+  it("defaults the attestation hash to the zero hash when omitted", async function () {
+    const fakeTx = { hash: "0xabc", wait: sinon.stub().resolves({ blockNumber: 42 }) };
+    const contract = { whitelist: sinon.stub().resolves(fakeTx) };
+    const client = new IdentityClient({
+      provider: {},
+      signer: { address: "0x0000000000000000000000000000000000000001" },
+      contract,
+    });
+
+    const result = await client.whitelist("0x0000000000000000000000000000000000000002", "TRADER");
+
+    expect(contract.whitelist.firstCall.args[2]).to.equal(ethers.ZeroHash);
+    expect(result.attestationHash).to.equal(ethers.ZeroHash);
+  });
+
+  it("computes a deterministic, salted attestation hash bound to the wallet", function () {
+    const walletAddress = "0x00000000000000000000000000000000000000AB";
+    const salt = "00ff";
+    const a = computeAttestationHash({ walletAddress, subject: "NIC-123", salt });
+    const b = computeAttestationHash({ walletAddress: walletAddress.toLowerCase(), subject: "NIC-123", salt });
+    const differentSalt = computeAttestationHash({ walletAddress, subject: "NIC-123", salt: "01ff" });
+    const differentSubject = computeAttestationHash({ walletAddress, subject: "NIC-999", salt });
+
+    expect(a).to.match(/^0x[0-9a-f]{64}$/);
+    expect(b).to.equal(a); // case-insensitive on the wallet address
+    expect(differentSalt).to.not.equal(a);
+    expect(differentSubject).to.not.equal(a);
+  });
+
+  it("generates a 32-byte random attestation salt", function () {
+    const s1 = generateAttestationSalt();
+    const s2 = generateAttestationSalt();
+    expect(s1).to.match(/^[0-9a-f]{64}$/);
+    expect(s2).to.not.equal(s1);
   });
 
   it("executes updateAttestation and revoke", async function () {

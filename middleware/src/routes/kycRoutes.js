@@ -1,6 +1,7 @@
 const express = require("express");
 const { ethers } = require("ethers");
 const { buildChallenge, verifySignedChallenge } = require("../services/challengeService");
+const { computeAttestationHash, generateAttestationSalt } = require("../services/identityClient");
 const { kycCases, users, toKey, writeAudit, persistNow } = require("../state/store");
 const { ROLES } = require("../security/auth");
 
@@ -116,7 +117,14 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
       }
 
       const role = result.role || caseData.requestedRole;
-      const whitelistTx = await identityClient.whitelist(walletAddress, role);
+      const attestationSalt = generateAttestationSalt();
+      const attestationSubject = result.evidenceId || caseData.identityData?.nic || walletAddress;
+      const attestationHash = computeAttestationHash({
+        walletAddress,
+        subject: attestationSubject,
+        salt: attestationSalt,
+      });
+      const whitelistTx = await identityClient.whitelist(walletAddress, role, attestationHash);
 
       let attestationTx = null;
       let expiryUnixSeconds = null;
@@ -132,6 +140,8 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
         role: whitelistTx.role,
         provider: result.provider,
         evidenceId: result.evidenceId,
+        attestationHash,
+        attestationSalt,
         easyReverification: easy,
         kycStatus: "approved",
         updatedAt: new Date().toISOString(),
@@ -207,7 +217,14 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
         return res.status(403).json({ approved: false, reason: result.reason || "Verification failed" });
       }
 
-      const whitelistTx = await identityClient.whitelist(walletAddress, result.role);
+      const attestationSalt = generateAttestationSalt();
+      const attestationSubject = result.evidenceId || existing?.attestationSubject || walletAddress;
+      const attestationHash = computeAttestationHash({
+        walletAddress,
+        subject: attestationSubject,
+        salt: attestationSalt,
+      });
+      const whitelistTx = await identityClient.whitelist(walletAddress, result.role, attestationHash);
       const nextReviewAt = new Date(Date.now() + parsedAttestationDays * 24 * 60 * 60 * 1000).toISOString();
 
       users.set(key, {
@@ -216,6 +233,8 @@ function createKycRouter({ identityClient, providerAdapter, config, auth, rateLi
         role: result.role,
         provider: result.provider,
         evidenceId: result.evidenceId,
+        attestationHash,
+        attestationSalt,
         easyReverification: false,
         kycStatus: "approved",
         offchainNextReviewAt: nextReviewAt,

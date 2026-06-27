@@ -28,9 +28,9 @@ describe("Plugin Comparison (OrderBook vs AMM)", function () {
     const identity = await Identity.deploy();
     await identity.waitForDeployment();
 
-    await send(identity.whitelist(buyer.address, TRADER_ROLE));
-    await send(identity.whitelist(seller.address, TRADER_ROLE));
-    await send(identity.whitelist(lp.address, TRADER_ROLE));
+    await send(identity.whitelist(buyer.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(seller.address, TRADER_ROLE, ethers.ZeroHash));
+    await send(identity.whitelist(lp.address, TRADER_ROLE, ethers.ZeroHash));
 
     const Registry = await ethers.getContractFactory("Registry");
     const registry = await Registry.deploy(await identity.getAddress());
@@ -93,7 +93,7 @@ describe("Plugin Comparison (OrderBook vs AMM)", function () {
     );
     await amm.waitForDeployment();
 
-    await send(base.identity.whitelist(await amm.getAddress(), TRADER_ROLE));
+    await send(base.identity.whitelist(await amm.getAddress(), TRADER_ROLE, ethers.ZeroHash));
     await send(base.settlement.authorizeEngine(await amm.getAddress()));
     await send(amm.initializePool(await base.cashToken.getAddress(), await base.securitiesToken.getAddress()));
 

@@ -12,20 +12,22 @@ interface IAccessControl {
     // TRADER, ISSUER, OPERATOR, REGULATOR
 
     // --- Events ---
-    event UserWhitelisted(address indexed user, bytes32 role);
+    event UserWhitelisted(address indexed user, bytes32 role, bytes32 attestationHash);
     event UserRevoked(address indexed user);
     event AttestationUpdated(address indexed user, uint256 expiry);
     event ReverificationPreferenceUpdated(address indexed user, bool easyReverification);
 
     // --- Functions ---
 
-    function whitelist(address user, bytes32 role) external;
+    function whitelist(address user, bytes32 role, bytes32 attestationHash) external;
 
     function revoke(address user) external;
 
     function isWhitelisted(address user) external view returns (bool);
 
     function getRole(address user) external view returns (bytes32);
+
+    function getAttestationHash(address user) external view returns (bytes32);
 
     function isExpired(address user) external view returns (bool);
 

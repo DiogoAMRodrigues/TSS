@@ -1,8 +1,29 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { ethers } = require("ethers");
 
 const VALID_ROLES = new Set(["TRADER", "ISSUER", "OPERATOR", "REGULATOR"]);
+
+// A per-attestation random salt held only in the off-chain record. Deleting the
+// off-chain record removes the salt, making the on-chain attestation hash
+// unrecomputable and therefore unlinkable to the natural person (GDPR erasure).
+function generateAttestationSalt() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+// Per-person commitment binding the verified identity to a wallet address.
+// SHA-256 over the lowercased wallet, a stable identity subject (eIDAS NIC or
+// provider evidence id), and the off-chain salt. Returns a 32-byte hex string
+// suitable for the on-chain bytes32 attestationHash field.
+function computeAttestationHash({ walletAddress, subject, salt }) {
+  const normalized = [
+    String(walletAddress || "").toLowerCase(),
+    String(subject || ""),
+    String(salt || ""),
+  ].join("|");
+  return ethers.sha256(ethers.toUtf8Bytes(normalized));
+}
 
 function loadIdentityAbi() {
   const abiPath = process.env.IDENTITY_ABI_PATH
@@ -89,12 +110,12 @@ class IdentityClient {
     this.contract = new ethers.Contract(identityAddress, loadIdentityAbi(), this.signer);
   }
 
-  async whitelist(walletAddress, role) {
+  async whitelist(walletAddress, role, attestationHash = ethers.ZeroHash) {
     const normalizedRole = normalizeRole(role);
     const roleBytes32 = ethers.keccak256(ethers.toUtf8Bytes(normalizedRole));
-    const tx = await this.contract.whitelist(walletAddress, roleBytes32);
+    const tx = await this.contract.whitelist(walletAddress, roleBytes32, attestationHash);
     const receipt = await tx.wait();
-    return { txHash: tx.hash, blockNumber: receipt.blockNumber, role: normalizedRole };
+    return { txHash: tx.hash, blockNumber: receipt.blockNumber, role: normalizedRole, attestationHash };
   }
 
   async updateAttestation(walletAddress, expiryUnixSeconds) {
@@ -129,3 +150,5 @@ class IdentityClient {
 module.exports = IdentityClient;
 module.exports.normalizeRole = normalizeRole;
 module.exports.loadIdentityAbi = loadIdentityAbi;
+module.exports.computeAttestationHash = computeAttestationHash;
+module.exports.generateAttestationSalt = generateAttestationSalt;

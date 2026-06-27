@@ -23,6 +23,7 @@ contract Identity is IAccessControl {
         bytes32 role;
         bool active;
         uint256 expiry;
+        bytes32 attestationHash;
         bool easyReverification;
         bool preferenceSet;
     }
@@ -59,6 +60,7 @@ contract Identity is IAccessControl {
             role: OPERATOR,
             active: true,
             expiry: type(uint256).max,
+            attestationHash: bytes32(0),
             easyReverification: true,
             preferenceSet: true
         });
@@ -66,7 +68,7 @@ contract Identity is IAccessControl {
 
     // --- IAccessControl Implementation ---
 
-    function whitelist(address user, bytes32 role) external override onlyOperator {
+    function whitelist(address user, bytes32 role, bytes32 attestationHash) external override onlyOperator {
         require(user != address(0), "Identity: zero address");
         require(
             role == TRADER || role == ISSUER || role == OPERATOR || role == REGULATOR,
@@ -81,16 +83,18 @@ contract Identity is IAccessControl {
             role: role,
             active: true,
             expiry: type(uint256).max,
+            attestationHash: attestationHash,
             easyReverification: easyReverification,
             preferenceSet: true
         });
-        emit UserWhitelisted(user, role);
+        emit UserWhitelisted(user, role, attestationHash);
     }
 
     function revoke(address user) external override onlyOperator {
         require(_users[user].active, "Identity: user not active");
         _users[user].active = false;
         _users[user].role = bytes32(0);
+        _users[user].attestationHash = bytes32(0);
         emit UserRevoked(user);
     }
 
@@ -105,6 +109,10 @@ contract Identity is IAccessControl {
             return bytes32(0);
         }
         return r.role;
+    }
+
+    function getAttestationHash(address user) external view override returns (bytes32) {
+        return _users[user].attestationHash;
     }
 
     function isExpired(address user) external view override returns (bool) {

@@ -1,36 +1,36 @@
 {
   "network": "hardhat",
-  "generatedAt": "2026-06-26T16:59:52.002Z",
+  "generatedAt": "2026-06-27T00:15:51.819Z",
   "samples": [
     {
       "depth": 0,
-      "orderBookSubmitGas": 283569,
-      "ammSwapGas": 800303
+      "orderBookSubmitGas": 285715,
+      "ammSwapGas": 805471
     },
     {
       "depth": 1,
-      "orderBookSubmitGas": 297163,
-      "ammSwapGas": 800315
+      "orderBookSubmitGas": 301601,
+      "ammSwapGas": 805483
     },
     {
       "depth": 5,
-      "orderBookSubmitGas": 408713,
-      "ammSwapGas": 800315
+      "orderBookSubmitGas": 422319,
+      "ammSwapGas": 805483
     },
     {
       "depth": 10,
-      "orderBookSubmitGas": 548154,
-      "ammSwapGas": 800315
+      "orderBookSubmitGas": 573220,
+      "ammSwapGas": 805483
     },
     {
       "depth": 20,
-      "orderBookSubmitGas": 827038,
-      "ammSwapGas": 800315
+      "orderBookSubmitGas": 875024,
+      "ammSwapGas": 805483
     },
     {
       "depth": 40,
-      "orderBookSubmitGas": 1384798,
-      "ammSwapGas": 800303
+      "orderBookSubmitGas": 1478624,
+      "ammSwapGas": 805471
     }
   ]
 }
