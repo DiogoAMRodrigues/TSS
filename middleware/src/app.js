@@ -27,6 +27,7 @@ function buildConfig() {
       process.env.STORE_PERSIST_ENABLED || String(defaultPersistEnabled)
     ).toLowerCase() !== "false",
     persistFilePath: process.env.STORE_PERSIST_FILE || "middleware/data/store.json",
+    encryptionKey: process.env.STORE_ENCRYPTION_KEY || undefined,
     reconciliationIntervalMs: Number(process.env.RECONCILE_INTERVAL_MS || 0),
   };
 }
@@ -36,6 +37,7 @@ function createApp(options = {}) {
   configureStore({
     persistEnabled: config.persistEnabled,
     persistFilePath: config.persistFilePath,
+    encryptionKey: config.encryptionKey,
   });
 
   const identityClient = options.identityClient || new IdentityClient();
