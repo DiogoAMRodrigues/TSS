@@ -59,3 +59,7 @@ QUICK_REFERENCE.md
 .env
 middleware/certs/
 scripts/smoke-out/
+
+# Evaluation results (ignore new files; keep already-tracked ones)
+evaluation_results/
+zTESE/evaluation_results/
