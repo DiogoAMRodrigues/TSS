@@ -1,7 +1,7 @@
 .user-list-card {
-  background: var(--card-bg, #1a1a2e);
+  background: #fff;
   border-radius: 12px;
-  border: 1px solid var(--border-color, #2a2a4a);
+  border: 1px solid #e0e0e0;
   overflow: hidden;
 }
 
@@ -10,7 +10,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border-color, #2a2a4a);
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .user-list-card .card-header h3 {
@@ -35,12 +35,12 @@
 .user-table td {
   padding: 0.75rem 1rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-color, #2a2a4a);
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .user-table th {
   font-weight: 600;
-  color: var(--text-muted, #888);
+  color: #666;
   font-size: 0.8rem;
   text-transform: uppercase;
 }
@@ -56,13 +56,13 @@
   font-weight: 500;
 }
 
-.badge-approved { background: #1a4a2a; color: #4ade80; }
-.badge-pending { background: #4a3a1a; color: #fbbf24; }
-.badge-revoked { background: #4a1a1a; color: #f87171; }
-.badge-unknown { background: #2a2a3a; color: #888; }
+.badge-approved { background: #d4edda; color: #155724; }
+.badge-pending { background: #fff3cd; color: #856404; }
+.badge-revoked { background: #f8d7da; color: #721c24; }
+.badge-unknown { background: #e9ecef; color: #6c757d; }
 
 .empty-state {
-  color: var(--text-muted, #888);
+  color: #666;
   text-align: center;
   padding: 2rem;
 }
