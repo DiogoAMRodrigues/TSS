@@ -11,8 +11,11 @@ const ERC20_ABI = [
   'function decimals() public view returns (uint8)'
 ];
 
-// Event signatures for OrderSubmitted
-const ORDER_SUBMITTED_EVENT = 'event OrderSubmitted(address indexed user, uint256 indexed orderId, uint8 direction, uint256 amount, uint256 price, uint256 timestamp)';
+// OrderSubmitted event — MUST match the on-chain signature in
+// contracts/interfaces/IMatchingEngine.sol (emitted by both OrderBook and AMM).
+const ORDERBOOK_EVENT_ABI = [
+  'event OrderSubmitted(uint256 indexed orderId, address indexed trader, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut)',
+];
 
 export function Portfolio() {
   const { address, provider, isConnected } = useWallet();
@@ -85,49 +88,46 @@ export function Portfolio() {
 
   const fetchTradeHistory = async (provider, ammAddress, orderBookAddress, userAddress) => {
     try {
-      const trades = [];
+      const cashTokenAddress = import.meta.env.VITE_CASH_TOKEN_ADDRESS;
+      const fromBlock = Math.max(0, (await provider.getBlockNumber()) - 1024);
 
-      // Create filter for OrderSubmitted events
-      // We'll query logs directly since we need to filter by user address
-      const orderSubmittedTopic = provider.getEventFilter
-        ? provider.getEventFilter('OrderSubmitted')
-        : '0x' + Array(64).fill('0').join(''); // Placeholder
+      // Collect this user's OrderSubmitted events from one matching engine.
+      const collect = async (engineAddress) => {
+        const contract = new Contract(engineAddress, ORDERBOOK_EVENT_ABI, provider);
+        // Filter: OrderSubmitted(orderId indexed, trader indexed) — match trader.
+        const events = await contract.queryFilter(
+          contract.filters.OrderSubmitted(null, userAddress),
+          fromBlock
+        );
 
-      // Query logs from both contracts
-      const fromBlock = 'latest'; // In production, use a specific block range
-      const toBlock = 'latest';
+        return Promise.all(
+          events.map(async (ev) => {
+            const [orderId, , tokenIn, , amountIn, amountOut] = ev.args;
+            const isBuy = tokenIn.toLowerCase() === cashTokenAddress.toLowerCase();
+            // amount = securities leg; price = cash per security
+            const amount = formatUnits(isBuy ? amountOut : amountIn, 18);
+            const price = isBuy
+              ? Number(amountIn) / Number(amountOut)
+              : Number(amountOut) / Number(amountIn);
+            const block = await ev.getBlock();
+            return {
+              orderId: orderId.toString(),
+              direction: isBuy ? 0 : 1,
+              amount,
+              price: price.toString(),
+              timestamp: block ? block.timestamp : 0,
+            };
+          })
+        );
+      };
 
-      try {
-        // Query AMM contract logs
-        const ammLogs = await provider.getLogs({
-          address: ammAddress,
-          topics: [
-            '0x' + Buffer.from('OrderSubmitted(address,uint256,uint8,uint256,uint256,uint256)'.split('(')[0]).toString('hex').padStart(64, '0')
-          ],
-          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 1024),
-          toBlock: 'latest'
-        });
+      const [ammTrades, obTrades] = await Promise.all([
+        collect(ammAddress).catch(() => []),
+        collect(orderBookAddress).catch(() => []),
+      ]);
 
-        // Query OrderBook contract logs
-        const orderBookLogs = await provider.getLogs({
-          address: orderBookAddress,
-          topics: [
-            '0x' + Buffer.from('OrderSubmitted(address,uint256,uint8,uint256,uint256,uint256)'.split('(')[0]).toString('hex').padStart(64, '0')
-          ],
-          fromBlock: Math.max(0, (await provider.getBlockNumber()) - 1024),
-          toBlock: 'latest'
-        });
-
-        // Process logs (simplified - in production you'd parse the event data properly)
-        const allLogs = [...ammLogs, ...orderBookLogs];
-
-        // For now, set empty trade history as a placeholder
-        // In production, you'd decode the log data and filter by user address
-        setTradeHistory([]);
-      } catch (logErr) {
-        console.warn('Could not fetch trade history logs:', logErr);
-        setTradeHistory([]);
-      }
+      const trades = [...ammTrades, ...obTrades].sort((a, b) => b.timestamp - a.timestamp);
+      setTradeHistory(trades);
     } catch (err) {
       console.error('Error fetching trade history:', err);
       setTradeHistory([]);

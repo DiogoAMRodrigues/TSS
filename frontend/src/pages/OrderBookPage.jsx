@@ -316,8 +316,8 @@ export function OrderBookPage() {
         order.tokenIn.toLowerCase() === cashTokenAddress.toLowerCase()
     )
     .sort((a, b) => {
-      const priceA = Number(b.amountOut) / Number(a.amountIn);
-      const priceB = Number(b.amountOut) / Number(b.amountIn);
+      const priceA = Number(a.amountIn) / Number(a.amountOut);
+      const priceB = Number(b.amountIn) / Number(b.amountOut);
       return priceB - priceA;
     });
 
@@ -458,10 +458,10 @@ export function OrderBookPage() {
                         buyOrders.map((order) => (
                           <div key={order.orderId.toString()} className="table-row">
                             <div className="col-price">
-                              {(Number(order.amountOut) / Number(order.amountIn)).toFixed(4)}
+                              {(Number(order.amountIn) / Number(order.amountOut)).toFixed(4)}
                             </div>
                             <div className="col-amount">
-                              {formatUnits(order.amountIn, 18).slice(0, 10)}
+                              {formatUnits(order.amountOut, 18).slice(0, 10)}
                             </div>
                             <div className="col-trader">{truncateAddress(order.trader)}</div>
                           </div>
@@ -520,7 +520,10 @@ export function OrderBookPage() {
                 </div>
                 {myOrders.map((order) => {
                   const isBuy = order.tokenIn.toLowerCase() === cashTokenAddress.toLowerCase();
-                  const price = Number(order.amountOut) / Number(order.amountIn);
+                  const price = isBuy
+                    ? Number(order.amountIn) / Number(order.amountOut)
+                    : Number(order.amountOut) / Number(order.amountIn);
+                  const amountSecurities = isBuy ? order.amountOut : order.amountIn;
                   const statusText =
                     order.status === ORDER_STATUS.OPEN
                       ? 'Open'
@@ -534,7 +537,7 @@ export function OrderBookPage() {
                         {isBuy ? 'BUY' : 'SELL'}
                       </div>
                       <div className="col-price">{price.toFixed(4)}</div>
-                      <div className="col-amount">{formatUnits(order.amountIn, 18).slice(0, 10)}</div>
+                      <div className="col-amount">{formatUnits(amountSecurities, 18).slice(0, 10)}</div>
                       <div className={`col-status status-${statusText.toLowerCase()}`}>{statusText}</div>
                       <div className="col-action">
                         {order.status === ORDER_STATUS.OPEN && (
