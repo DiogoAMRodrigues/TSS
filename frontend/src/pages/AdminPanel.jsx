@@ -49,7 +49,7 @@ export function AdminPanel() {
             <UserLookup />
           </div>
 
-          <div className="admin-section">
+          <div className="admin-section full-width">
             <div className="reconcile-card">
               <div className="card-header">
                 <h3>System Reconciliation</h3>
