@@ -1,16 +1,78 @@
-# React + Vite
+# TSS Frontend (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The web interface for the TSS Trading and Settlement System. Provides MetaMask
+wallet connection, the KYC verification flow (simulated or real eIDAS), a trading
+interface (OrderBook and AMM), and an admin panel.
 
-Currently, two official plugins are available:
+It talks to the KYC middleware (`../middleware`) over REST and to the chain via
+MetaMask. See the root [`README.md`](../README.md) for the full stack and the
+real eIDAS / VM deployment flow.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Prerequisites
 
-## React Compiler
+- Node.js 24+
+- The middleware running (default `http://localhost:3000`)
+- MetaMask, connected to the Besu network (`IST_Test`, chainId `0x539` / 1337)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Setup
 
-## Expanding the ESLint configuration
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Create the env file from the example:
+   ```bash
+   cp .env.example .env
+   ```
+   Configure to match your middleware:
+   ```
+   VITE_API_URL=http://localhost:3000
+   VITE_API_KEY=operator-key
+   VITE_DEBUG=true
+   ```
+   `VITE_DEBUG=true` logs all API calls and responses to the browser console.
+3. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+4. Open `http://localhost:5173`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+For real eIDAS end-to-end testing against the public middleware, point
+`VITE_API_URL` at `https://tss.dpss.inesc-id.pt` (localhost cannot receive the
+AMA callback). Full steps are in the root README under
+"Testing real eIDAS end-to-end".
+
+## Structure
+
+```
+src/
+├── App.jsx                # Root component with routing
+├── main.jsx               # Entry point
+├── components/            # Navbar, KycFlow, KycStatusCard, RevokeForm,
+│                          # UserList, UserLookup, AuditLog
+├── pages/                 # Dashboard, UserDashboard, AdminPanel, TradePage,
+│                          # OrderBookPage, AMMPage, Portfolio
+├── context/               # WalletContext (wallet connection state)
+└── services/api.js        # REST client for the middleware
+```
+
+## Features
+
+- **User view:** connect wallet, start KYC, sign the challenge with MetaMask,
+  then continue with Cartão de Cidadão (real eIDAS) or simulated KYC (dev only);
+  view status / role / expiry; reverify when the attestation expires.
+- **Trading:** submit orders (OrderBook), add/remove liquidity and swap (AMM).
+- **Admin view:** revoke users, trigger reconciliation, browse the audit log,
+  look up user state.
+
+## Debugging
+
+Set `VITE_DEBUG=true` in `.env` and open the browser console (F12) to see API
+calls, keys used, and response statuses.
+
+## Build
+
+```bash
+npm run build      # production build to dist/
+npm run preview    # preview the production build
+```

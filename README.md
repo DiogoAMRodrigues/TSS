@@ -70,7 +70,7 @@ The system uses a generic plugin architecture where any matching mechanism can p
 - **SecuritiesToken.sol** - ERC-20 tokenized securities. Transfers restricted to whitelisted addresses.
 - **CashToken.sol** - ERC-20 tokenized EUR for DvP cash leg.
 - **Registry.sol** - Tracks all deployed compliant token contracts.
-- **OrderBook.sol** - On-chain order book implementing `IMatchingEngine`. Price-time priority matching. Triggers DvP on match.
+- **OrderBook.sol** - On-chain order book implementing `IMatchingEngine`. First-fit time priority matching. Triggers DvP on match.
 - **AMM.sol** - Constant-product automated market maker implementing `IMatchingEngine`. Uses the same settlement/compliance layer with pool-based execution.
 - **Settlement.sol** - Atomic DvP settlement. Both token transfers succeed or both revert. Generic - works with any `IMatchingEngine` implementation.
 
