@@ -11,9 +11,12 @@ const ORDERBOOK_ABI = [
   'function submitOrder(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut) returns (uint256)',
   'function cancelOrder(uint256 orderId)',
   'function getOrder(uint256 orderId) returns (tuple(uint256 orderId, address trader, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 timestamp, uint8 status))',
-  'event OrderSubmitted(uint256 indexed orderId, address indexed trader, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 timestamp)',
-  'event OrderCancelled(uint256 indexed orderId, address indexed trader, uint256 timestamp)',
-  'event OrderMatched(uint256 indexed orderId, address indexed trader, uint256 timestamp)',
+  // NOTE: these MUST match the on-chain event signatures exactly (see
+  // contracts/interfaces/IMatchingEngine.sol) or parseLog/queryFilter return
+  // nothing and the book fails to load.
+  'event OrderSubmitted(uint256 indexed orderId, address indexed trader, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut)',
+  'event OrderCancelled(uint256 indexed orderId, address indexed trader)',
+  'event OrderMatched(uint256 indexed matchId, uint256 indexed buyOrderId, uint256 indexed sellOrderId)',
 ];
 
 // Minimal ABI for ERC20 tokens
@@ -79,58 +82,36 @@ export function OrderBookPage() {
       const currentBlock = await provider.getBlockNumber();
       const fromBlock = Math.max(0, currentBlock - 1024);
 
-      // Get all OrderSubmitted events
-      const submitFilter = contract.filters.OrderSubmitted();
-      const submitEvents = await provider.getLogs({
-        address: orderbookAddress,
-        topics: submitFilter.topics,
-        fromBlock,
-      });
-
-      // Get all OrderCancelled events
-      const cancelFilter = contract.filters.OrderCancelled();
-      const cancelEvents = await provider.getLogs({
-        address: orderbookAddress,
-        topics: cancelFilter.topics,
-        fromBlock,
-      });
-
-      // Get all OrderMatched events
-      const matchFilter = contract.filters.OrderMatched();
-      const matchEvents = await provider.getLogs({
-        address: orderbookAddress,
-        topics: matchFilter.topics,
-        fromBlock,
-      });
+      // queryFilter returns already-parsed EventLog objects (with .args) and
+      // filters by the correct event topic — no manual topics/parseLog needed.
+      const [submitEvents, cancelEvents, matchEvents] = await Promise.all([
+        contract.queryFilter(contract.filters.OrderSubmitted(), fromBlock),
+        contract.queryFilter(contract.filters.OrderCancelled(), fromBlock),
+        contract.queryFilter(contract.filters.OrderMatched(), fromBlock),
+      ]);
 
       // Parse events
-      const parsedSubmit = submitEvents.map((log) => {
-        const parsed = contract.interface.parseLog(log);
-        return {
-          orderId: parsed.args[0],
-          trader: parsed.args[1],
-          tokenIn: parsed.args[2],
-          tokenOut: parsed.args[3],
-          amountIn: parsed.args[4],
-          amountOut: parsed.args[5],
-          timestamp: parsed.args[6],
-          status: ORDER_STATUS.OPEN,
-        };
-      });
+      const parsedSubmit = submitEvents.map((ev) => ({
+        orderId: ev.args[0],
+        trader: ev.args[1],
+        tokenIn: ev.args[2],
+        tokenOut: ev.args[3],
+        amountIn: ev.args[4],
+        amountOut: ev.args[5],
+        status: ORDER_STATUS.OPEN,
+      }));
 
+      // OrderCancelled(orderId, trader)
       const cancelledIds = new Set(
-        cancelEvents.map((log) => {
-          const parsed = contract.interface.parseLog(log);
-          return parsed.args[0].toString();
-        })
+        cancelEvents.map((ev) => ev.args[0].toString())
       );
 
-      const matchedIds = new Set(
-        matchEvents.map((log) => {
-          const parsed = contract.interface.parseLog(log);
-          return parsed.args[0].toString();
-        })
-      );
+      // OrderMatched(matchId, buyOrderId, sellOrderId) — both legs are matched
+      const matchedIds = new Set();
+      matchEvents.forEach((ev) => {
+        matchedIds.add(ev.args[1].toString()); // buyOrderId
+        matchedIds.add(ev.args[2].toString()); // sellOrderId
+      });
 
       // Build order map with status updates
       const orderMap = new Map();
@@ -149,7 +130,7 @@ export function OrderBookPage() {
       if (address) {
         const userOrders = Array.from(orderMap.values())
           .filter((order) => order.trader.toLowerCase() === address.toLowerCase())
-          .sort((a, b) => b.timestamp - a.timestamp);
+          .sort((a, b) => Number(b.orderId) - Number(a.orderId));
         setMyOrders(userOrders);
       }
     } catch (err) {
@@ -171,7 +152,7 @@ export function OrderBookPage() {
 
     const contract = new Contract(orderbookAddress, ORDERBOOK_ABI, provider);
 
-    const handleOrderSubmitted = (orderId, trader, tokenIn, tokenOut, amountIn, amountOut, timestamp) => {
+    const handleOrderSubmitted = (orderId, trader, tokenIn, tokenOut, amountIn, amountOut) => {
       const order = {
         orderId,
         trader,
@@ -179,7 +160,6 @@ export function OrderBookPage() {
         tokenOut,
         amountIn,
         amountOut,
-        timestamp,
         status: ORDER_STATUS.OPEN,
       };
 
@@ -209,19 +189,23 @@ export function OrderBookPage() {
       );
     };
 
-    const handleOrderMatched = (orderId) => {
+    const handleOrderMatched = (matchId, buyOrderId, sellOrderId) => {
+      const legIds = [buyOrderId.toString(), sellOrderId.toString()];
+
       setOrders((prev) => {
         const updated = new Map(prev);
-        const order = updated.get(orderId.toString());
-        if (order) {
-          updated.set(orderId.toString(), { ...order, status: ORDER_STATUS.MATCHED });
-        }
+        legIds.forEach((id) => {
+          const order = updated.get(id);
+          if (order) {
+            updated.set(id, { ...order, status: ORDER_STATUS.MATCHED });
+          }
+        });
         return updated;
       });
 
       setMyOrders((prev) =>
         prev.map((order) =>
-          order.orderId.toString() === orderId.toString()
+          legIds.includes(order.orderId.toString())
             ? { ...order, status: ORDER_STATUS.MATCHED }
             : order
         )
