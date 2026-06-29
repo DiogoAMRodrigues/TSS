@@ -18,6 +18,8 @@ TSS/
 │   ├── trading/        # OrderBook.sol, AMM.sol - IMatchingEngine implementations
 │   ├── settlement/     # Settlement.sol - atomic DvP
 │   └── registry/       # Registry.sol - asset directory
+├── middleware/         # Express.js KYC/eIDAS middleware (SAML 2.0 to AMA Autenticação.gov)
+├── frontend/           # React + Vite UI (MetaMask, KYC flow, admin panel)
 ├── networkFiles/       # Generated validator keys and genesis (gitignored)
 ├── node1-4/            # Validator node data (keys gitignored)
 ├── scripts/            # deploy.js, reset-network.ps1, smoke-eidas.js, deploy-vm.js, vm-*.js
@@ -88,7 +90,7 @@ The thesis now compares the matching plugins directly with equivalent scenarios 
 The identity contract now supports user-selectable re-verification behavior after attestation expiry.
 
 - Easy re-verification (default): operator can refresh the user attestation on-chain by calling `updateAttestation(user, newExpiry)`.
-- Full re-verification required: user opts out of easy refresh, and then `updateAttestation` reverts for that user. In this mode, the provider must run the full off-chain KYC flow again and then call `whitelist(user, role)`.
+- Full re-verification required: user opts out of easy refresh, and then `updateAttestation` reverts for that user. In this mode, the provider must run the full off-chain KYC flow again and then call `whitelist(user, role, attestationHash)`.
 
 User preference control:
 - User enables/disables easy refresh with `setReverificationPreference(bool easyReverification)`.
@@ -170,7 +172,7 @@ See [VM Deployment (INESC cluster + Real eIDAS)](#vm-deployment-inesc-cluster--r
 
 The middleware requires a local `.env` file with:
 - **OPERATOR_PRIVATE_KEY_FILE**: Path to a file containing the operator's private key (hex format). This is used to sign on-chain transactions (attestations, whitelisting).
-- **MIDDLEWARE_API_KEYS**: Space-separated key:role pairs for API authentication. Format: `key1:ROLE1;key2:ROLE2`. Roles are CLIENT, OPERATOR, REGULATOR, ADMIN.
+- **MIDDLEWARE_API_KEYS**: Space-separated key:role pairs for API authentication. Format: `key1:ROLE1;key2:ROLE2`. Roles are CLIENT, OPERATOR, REGULATOR, ADMIN (ADMIN is defined but not currently required by any endpoint; revoke/reconcile require OPERATOR, audit requires OPERATOR or REGULATOR.)
 
 **Setup:**
 1. Copy `middleware/.env.example` to `middleware/.env`:
@@ -250,10 +252,11 @@ A React web interface under `frontend/` provides wallet connection (MetaMask), K
 	Configure `VITE_API_URL` and `VITE_API_KEY` to match your middleware setup. Example:
 	```
 	VITE_API_URL=http://localhost:3000
-	VITE_API_KEY=operator-key
-	VITE_DEBUG=true
+	VITE_API_KEY=operator-dev-key
+	VITE_DEBUG=false
+	VITE_ALLOW_SIMULATED_KYC=false
 	```
-	**Note:** `VITE_DEBUG=true` logs all API calls and responses to the browser console for troubleshooting.
+	**Note:** The shipped default for `VITE_DEBUG` is `false`. Set to `true` to log all API calls and responses to the browser console for troubleshooting.
 
 3. Start dev server (requires middleware running on port 3000):
 	```bash
@@ -331,10 +334,10 @@ npm run deploy:vm
 Sequence (`scripts/deploy-vm.js`):
 1. **Pre-flight** — refuse to deploy if the local tree is dirty or local HEAD ≠ `origin/main` (override with `--no-verify-clean`).
 2. **`docker compose up -d`** — bring up the 4-node Besu network on the laptop and wait for `eth_blockNumber` on `127.0.0.1:8545`.
-3. **Deploy contracts** — runs `scripts/deploy.js --network besu`, but skips if `scripts/check-deployment.js` reports `VALID` (override with `--force-deploy`).
+3. **Deploy contracts** — runs `scripts/deploy.js --network besu`, but skips if `scripts/check-deployment.js` reports `VALID` (skip with `--skip-deploy`).
 4. **Patch `middleware/.env`** — auto-seeds `IDENTITY_ADDRESS`, `RPC_URL=http://127.0.0.1:8545`, and the full eIDAS SAML block (entry point, SP entity, ACS, SLO, cert paths, requested attributes, clock skew) if missing.
 5. **`scp -r`** middleware + `package.json` + `package-lock.json` + `artifacts/` + `deployments/besu.json` to `~/` on the VM.
-6. **SSH install gate** — on the VM: kill anything on port `:8545` and `:3000` (`fuser -k`), `npm install --omit=dev` if the lockfile changed or `node_modules/ethers` is missing, then `setsid nohup node middleware/src/server.js > ~/middleware.log 2>&1 &`. Verifies via `ss -tln | grep ':3000 '`.
+6. **SSH install gate** — on the VM: kill anything on port `:8545` and `:3000` (`fuser -k`), `npm install --omit=dev` if `node_modules` or `node_modules/ethers` is missing on the VM (note: no lockfile-change detection — after a lockfile-only change, pass `--skip-install` off / delete node_modules to force a reinstall), then `setsid nohup node middleware/src/server.js > ~/middleware.log 2>&1 &`. Verifies via `ss -tln | grep ':3000 '`.
 7. **Spawn reverse SSH tunnel** in a separate cmd window (`-N -R 8545:127.0.0.1:8545`) — survives script exit; close the window manually when done.
 8. **Poll** `https://tss.dpss.inesc-id.pt/health` until 2xx, then print log tail.
 
@@ -342,7 +345,8 @@ Expect ~6 password prompts per full run (3 SSH/SCP pairs with ProxyJump).
 
 Flags:
 - `--skip-deploy` — don't redeploy contracts even if `check-deployment` says INVALID.
-- `--force-deploy` — redeploy contracts even when chain state is VALID.
+- `--skip-local` — skip docker compose up / local network bring-up.
+- `--skip-sync` — skip the scp of middleware/artifacts to the VM.
 - `--skip-install` — don't `npm install` on the VM even if the lockfile changed.
 - `--skip-tunnel` — don't spawn a new tunnel window (assumes one is already up).
 - `--no-verify-clean` — bypass the local-clean / pushed-to-origin check.
@@ -409,15 +413,15 @@ EIDAS_SP_ACS_URL=https://tss.dpss.inesc-id.pt/api/kyc/eidas/callback
 EIDAS_SP_SLO_URL=https://tss.dpss.inesc-id.pt/logout
 EIDAS_SP_CERT_PATH=middleware/certs/tss-saml-leaf.crt
 EIDAS_SP_KEY_PATH=middleware/certs/tss-saml.key
-EIDAS_IDP_CERT_PATH=middleware/certs/ama-preprod-ca.crt
-EIDAS_REQUESTED_ATTRIBUTES=NIC,NomeCompleto,NomeProprio,NomeApelido,DataNascimento,CorreioElectronico
-EIDAS_CLOCK_SKEW_SECONDS=30
+EIDAS_IDP_CERT_PATH=middleware/certs/ama-preprod-idp.crt
+EIDAS_REQUESTED_ATTRIBUTES=NIC,NomeCompleto,DataNascimento,CorreioElectronico
+EIDAS_CLOCK_SKEW_SECONDS=60
 ```
 
 **SAML certs** (gitignored, must be present on the VM under `middleware/certs/`):
 - `tss-saml.key` — RSA 2048 private key, generated on the VM, chmod 600, **never** leaves the VM.
 - `tss-saml-leaf.crt` — AMA-signed SP cert (Issuer `CN=saml.preprod.autenticacao.gov.pt, O=AMA`, Subject `tss.dpss.inesc-id.pt`).
-- `ama-preprod-ca.crt` — AMA's preprod IdP cert (validates incoming SAML responses).
+- `ama-preprod-idp.crt` — AMA's preprod IdP cert (validates incoming SAML responses).
 
 To verify cert ↔ key match on the VM:
 ```bash
@@ -428,7 +432,7 @@ openssl rsa  -in middleware/certs/tss-saml.key       -noout -modulus | openssl m
 
 **AMA SP registration** is handled by Rui Martinho (`rui.martinho@arte.gov.pt`,
 ARTE/AMA). One-time process: send CSR + SP form → AMA signs cert → place
-`tss-saml-leaf.crt` + `ama-preprod-ca.crt` on the VM → AMA flips config live.
+`tss-saml-leaf.crt` + `ama-preprod-idp.crt` on the VM → AMA flips config live.
 
 **Smoke test** — builds and signs an AuthnRequest locally without contacting
 AMA, then runs structural assertions (signature, embedded cert subject,

@@ -27,10 +27,11 @@ real eIDAS / VM deployment flow.
    Configure to match your middleware:
    ```
    VITE_API_URL=http://localhost:3000
-   VITE_API_KEY=operator-key
-   VITE_DEBUG=true
+   VITE_API_KEY=operator-dev-key
+   VITE_DEBUG=false
+   VITE_ALLOW_SIMULATED_KYC=false
    ```
-   `VITE_DEBUG=true` logs all API calls and responses to the browser console.
+   Set `VITE_DEBUG=true` (shipped default is false) to log all API calls and responses to the browser console.
 3. Start the dev server:
    ```bash
    npm run dev
