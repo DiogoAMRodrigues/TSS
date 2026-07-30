@@ -267,6 +267,7 @@ async function main() {
       `VITE_IDENTITY_ADDRESS=${c.Identity}`,
       `VITE_TRADING_MODE=${tradingMode}`,
       'VITE_DEBUG=false',
+      'VITE_ALLOW_SIMULATED_KYC=true',
     ].join('\n');
     fs.writeFileSync(frontendEnvPath, frontendEnv + '\n');
     console.log('  ✓ Frontend .env configured with contract addresses\n');
