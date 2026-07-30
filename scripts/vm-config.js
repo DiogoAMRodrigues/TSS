@@ -17,7 +17,9 @@ const DEFAULT_SSH_CONFIG =
 const cfg = {
   // SSH plumbing
   sshUser: process.env.VM_SSH_USER || "ist1112192",
-  sshHost: process.env.VM_SSH_HOST || "10.16.144.70",
+  // NOTE: VM was rebooted 2026-07-30 after the datacenter AC shutdown and came
+  // back with a new IP (was 10.16.144.70). DPSS repointed nginx accordingly.
+  sshHost: process.env.VM_SSH_HOST || "10.16.144.143",
   sshJump: process.env.VM_SSH_JUMP || "inesc-headnode",
   sshConfig: process.env.VM_SSH_CONFIG || DEFAULT_SSH_CONFIG,
 

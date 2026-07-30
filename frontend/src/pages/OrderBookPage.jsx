@@ -248,13 +248,20 @@ export function OrderBookPage() {
 
       const contract = new Contract(orderbookAddress, ORDERBOOK_ABI, signer);
 
-      // Parse amounts with 18 decimals
-      const amountIn = parseUnits(amount, 18);
-      const amountOut = parseUnits((parseFloat(amount) * parseFloat(price)).toString(), 18);
+      // Parse amounts with 18 decimals.
+      // `amount` is always the securities quantity; `amount * price` is the cash leg.
+      // BUY : tokenIn = cash (amount * price), tokenOut = securities (amount)
+      // SELL: tokenIn = securities (amount),   tokenOut = cash (amount * price)
+      const isBuy = orderType === 'buy';
+      const securitiesLeg = parseUnits(amount, 18);
+      const cashLeg = parseUnits((parseFloat(amount) * parseFloat(price)).toString(), 18);
+
+      const amountIn = isBuy ? cashLeg : securitiesLeg;
+      const amountOut = isBuy ? securitiesLeg : cashLeg;
 
       // Determine token order based on buy/sell
-      const tokenIn = orderType === 'buy' ? cashTokenAddress : securitiesTokenAddress;
-      const tokenOut = orderType === 'buy' ? securitiesTokenAddress : cashTokenAddress;
+      const tokenIn = isBuy ? cashTokenAddress : securitiesTokenAddress;
+      const tokenOut = isBuy ? securitiesTokenAddress : cashTokenAddress;
 
       // Approve token spending
       const tokenContract = new Contract(tokenIn, ERC20_ABI, signer);
