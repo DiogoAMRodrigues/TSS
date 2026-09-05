@@ -2,7 +2,7 @@
 
 A DLT-based Trading and Settlement System built on Hyperledger Besu with IBFT 2.0 consensus, compliant with EU MiCA and DLT Pilot Regime regulations.
 
-📺 [Watch the 1-minute demo](https://youtu.be/ewlajwralX8) — wallet connection, KYC, order matching, and on-chain DvP settlement
+📺 [Watch the 1-minute demo](https://youtu.be/cbOggWxoUdA) — wallet connection, KYC, order matching, and on-chain DvP settlement
 
 ## Prerequisites
 - Java 22+ (`C:\Program Files\Java\jdk-22`)
